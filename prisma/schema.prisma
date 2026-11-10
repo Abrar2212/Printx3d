@@ -1,0 +1,123 @@
+// This is your Prisma schema file.
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ────────────────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("users")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+// ─── Styles (Keychain | Desk Nameplate | Wall Sign) ───────────
+model Style {
+  id         String  @id @default(uuid())
+  name       String  // "Keychain" | "Desk Nameplate" | "Wall Sign"
+  fontFamily String  @map("font_family")
+  basePrice  Decimal @map("base_price") @db.Decimal(10, 2)
+  /// JSON: { extrusionDepth: number, bevel: number, hasBasePlate: boolean }
+  config     Json
+  isActive   Boolean @default(true) @map("is_active")
+
+  orderItems OrderItem[]
+
+  @@map("styles")
+}
+
+// ─── Colors / Filaments ───────────────────────────────────────
+model Color {
+  id           String       @id @default(uuid())
+  name         String       // "Matte Black" | "Silk Gold" | "Fire Red"
+  hexCode      String       @map("hex_code")
+  materialType MaterialType @map("material_type")
+  inStock      Boolean      @default(true) @map("in_stock")
+
+  textOrderItems OrderItem[] @relation("TextColor")
+  baseOrderItems OrderItem[] @relation("BaseColor")
+
+  @@map("colors")
+}
+
+enum MaterialType {
+  PLA
+  PETG
+  TPU
+}
+
+// ─── Orders ───────────────────────────────────────────────────
+model Order {
+  id              String        @id @default(uuid())
+  userId          String?       @map("user_id")
+  customerName    String        @map("customer_name")
+  customerEmail   String        @map("customer_email")
+  customerPhone   String?       @map("customer_phone")
+  shippingAddress String        @map("shipping_address")
+  totalPrice      Decimal       @map("total_price") @db.Decimal(10, 2)
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user       User?       @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PRINTING
+  PRINTED
+  SHIPPED
+  DELIVERED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// ─── Order Items ──────────────────────────────────────────────
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String   @map("order_id")
+  styleId     String   @map("style_id")
+  colorId     String   @map("color_id")        // Primary Text Color
+  baseColorId String?  @map("base_color_id")   // Key Contour Backplate Color
+  fontStyle   String   @default("helvetiker_bold") @map("font_style") // Selected 3D Typeface
+  customText  String   @map("custom_text")
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  stlFileUrl  String?  @map("stl_file_url")
+  /// JSON: { width_mm: number, height_mm: number, depth_mm: number }
+  dimensions  Json?
+
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  style     Style  @relation(fields: [styleId], references: [id])
+  color     Color  @relation("TextColor", fields: [colorId], references: [id])
+  baseColor Color? @relation("BaseColor", fields: [baseColorId], references: [id])
+
+  @@map("order_items")
+}
+

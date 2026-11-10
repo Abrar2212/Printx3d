@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: printx3d
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: printx3d-db
+          property: connectionString
+      - key: OPERATOR_PIN
+        value: "1234"
+
+databases:
+  - name: printx3d-db
+    plan: free
+    databaseName: printx3d
+    user: printx3d_user
+
