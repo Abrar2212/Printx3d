@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPrint,
@@ -19,10 +20,34 @@ import {
   faPlay,
   faTruckFast,
   faCircleCheck,
+  faPalette,
+  faSliders,
+  faFont,
+  faPlus,
+  faTrash,
+  faPenToSquare,
+  faEye,
+  faRuler,
+  faTag,
+  faLayerGroup,
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
+import { FONT_STYLE_OPTIONS } from "@/types";
 
-// Suppress false-positive hydration warnings caused by browser extensions mutating the DOM (e.g. Bitwarden bis_skin_checked)
+// Dynamically load 3D Canvas for the Admin Live Test Bench without SSR
+const StudioCanvas = dynamic(() => import("@/components/3d/StudioCanvas"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 sm:h-80 bg-[#0F172A] rounded-xl flex items-center justify-center text-slate-400 text-sm font-mono border border-slate-800">
+      <div className="flex items-center gap-2">
+        <FontAwesomeIcon icon={faRotate} className="animate-spin text-emerald-400" />
+        <span>Initializing 3D Vector Engine…</span>
+      </div>
+    </div>
+  ),
+});
+
+// Suppress false-positive hydration warnings caused by browser extensions mutating the DOM
 if (typeof window !== "undefined") {
   const origError = console.error;
   console.error = (...args: unknown[]) => {
@@ -51,7 +76,7 @@ if (typeof window !== "undefined") {
   };
 }
 
-type OrderStatus =
+export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
   | "PRINTING"
@@ -59,20 +84,20 @@ type OrderStatus =
   | "SHIPPED"
   | "DELIVERED";
 
-type PaymentStatus = "PENDING" | "PAID" | "FAILED";
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
-interface OrderItem {
+export interface OrderItem {
   id: string;
   customText: string;
   fontStyle?: string;
   quantity: number;
   unitPrice: number;
-  style: { name: string };
+  style: { name: string; config?: Record<string, unknown> };
   color: { name: string; hexCode: string };
   baseColor?: { name: string; hexCode: string } | null;
 }
 
-interface Order {
+export interface Order {
   id: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -85,55 +110,80 @@ interface Order {
   orderItems: OrderItem[];
 }
 
+export interface FilamentItem {
+  id: string;
+  name: string;
+  hexCode: string;
+  materialType: "PLA" | "PETG" | "TPU";
+  inStock: boolean;
+}
+
+export interface StyleItem {
+  id: string;
+  name: string;
+  fontFamily: string;
+  basePrice: number;
+  config: Record<string, unknown>;
+  isActive: boolean;
+}
+
 interface Props {
   orders: Order[];
+  initialColors?: FilamentItem[];
+  initialStyles?: StyleItem[];
 }
 
 const DEFAULT_PIN = "1234";
 
 const STATUS_CHIPS: Record<
   OrderStatus,
-  { bg: string; text: string; border: string; label: string }
+  { bg: string; text: string; border: string; label: string; step: number }
 > = {
   PENDING: {
     bg: "bg-[#FEF08A]/30",
     text: "text-[#854D0E]",
     border: "border-[#FEF08A]",
-    label: "Pending",
+    label: "Pending Verification",
+    step: 1,
   },
   CONFIRMED: {
     bg: "bg-[#E0F2FE]",
     text: "text-[#0369A1]",
     border: "border-[#BAE6FD]",
     label: "Confirmed (Ready to Slice)",
+    step: 2,
   },
   PRINTING: {
     bg: "bg-[#FEF3C7]",
     text: "text-[#B45309]",
     border: "border-[#FDE68A]",
-    label: "Printing on Bed",
+    label: "Printing on 3D Bed",
+    step: 3,
   },
   PRINTED: {
     bg: "bg-[#EDE9FE]",
     text: "text-[#6D28D9]",
     border: "border-[#DDD6FE]",
     label: "Printed & Inspected",
+    step: 4,
   },
   SHIPPED: {
     bg: "bg-[#E0E7FF]",
     text: "text-[#4338CA]",
     border: "border-[#C7D2FE]",
     label: "Handed to Courier",
+    step: 5,
   },
   DELIVERED: {
     bg: "bg-[#DCFCE7]",
     text: "text-[#15803D]",
     border: "border-[#BBF7D0]",
     label: "Fulfilled & Delivered",
+    step: 6,
   },
 };
 
-const ALL_STATUSES: OrderStatus[] = [
+const ORDER_FLOW_STAGES: OrderStatus[] = [
   "PENDING",
   "CONFIRMED",
   "PRINTING",
@@ -142,29 +192,76 @@ const ALL_STATUSES: OrderStatus[] = [
   "DELIVERED",
 ];
 
-export default function AdminDashboard({ orders: initialOrders }: Props) {
+export default function AdminDashboard({
+  orders: initialOrders,
+  initialColors = [],
+  initialStyles = [],
+}: Props) {
+  // Navigation tabs: 'orders' | 'filaments' | 'settings' | 'preview'
+  const [activeTab, setActiveTab] = useState<"orders" | "filaments" | "settings" | "preview">("orders");
+
+  // Orders State
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [filter, setFilter] = useState<OrderStatus | "ALL">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [updating, setUpdating] = useState<string | null>(null);
   const [downloadingStl, setDownloadingStl] = useState<string | null>(null);
+  const [selectedTicketOrder, setSelectedTicketOrder] = useState<Order | null>(null);
 
-  // Operator PIN Gate state
+  // Filaments State
+  const [colors, setColors] = useState<FilamentItem[]>(initialColors);
+  const [editingColor, setEditingColor] = useState<FilamentItem | null>(null);
+  const [isAddColorModalOpen, setIsAddColorModalOpen] = useState(false);
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorHex, setNewColorHex] = useState("#FF6600");
+  const [newColorMaterial, setNewColorMaterial] = useState<"PLA" | "PETG" | "TPU">("PLA");
+  const [newColorInStock, setNewColorInStock] = useState(true);
+  const [filamentActionLoading, setFilamentActionLoading] = useState(false);
+
+  // 3D Sizing & Typography Settings State
+  const [styles, setStyles] = useState<StyleItem[]>(initialStyles);
+  const keychainStyle = useMemo(
+    () => styles.find((s) => s.id === "style-keychain") || styles[0],
+    [styles]
+  );
+  const initialConfig = (keychainStyle?.config as Record<string, unknown>) || {};
+
+  const [fontSize, setFontSize] = useState<number>(Number(initialConfig.fontSize ?? 1.2));
+  const [textDepth, setTextDepth] = useState<number>(Number(initialConfig.extrusionDepth ?? 0.18));
+  const [baseDepth, setBaseDepth] = useState<number>(Number(initialConfig.baseDepth ?? 0.20));
+  const [offsetRadius, setOffsetRadius] = useState<number>(Number(initialConfig.offsetRadius ?? 0.18));
+  const [earRadius, setEarRadius] = useState<number>(Number(initialConfig.earRadius ?? 0.22));
+  const [holeRadius, setHoleRadius] = useState<number>(Number(initialConfig.holeRadius ?? 0.10));
+  const [basePrice, setBasePrice] = useState<number>(Number(keychainStyle?.basePrice ?? 5.99));
+  const [defaultFont, setDefaultFont] = useState<string>(keychainStyle?.fontFamily || "helvetiker_bold");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsToast, setSettingsToast] = useState("");
+
+  // Live 3D Test Bench State
+  const [testText, setTestText] = useState("Abrar");
+  const [testTextColor, setTestTextColor] = useState("#FF6600");
+  const [testBaseColor, setTestBaseColor] = useState("#111111");
+  const [testFontStyle, setTestFontStyle] = useState("helvetiker_bold");
+  const [testKeychainLoop, setTestKeychainLoop] = useState(true);
+
+  // Operator PIN Gate State
   const [hasMounted, setHasMounted] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
 
-  // Printable Job Ticket Modal state
-  const [selectedTicketOrder, setSelectedTicketOrder] = useState<Order | null>(null);
-
-  // Check operator authentication session after client mount
   useEffect(() => {
     setHasMounted(true);
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem("printx3d_operator_token");
       if (stored === "unlocked") {
         setIsUnlocked(true);
+      }
+      // Check query param for tab
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get("tab");
+      if (tabParam === "filaments" || tabParam === "settings" || tabParam === "preview") {
+        setActiveTab(tabParam as any);
       }
     }
   }, []);
@@ -197,7 +294,7 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
   );
 
   // Search & Filter
-  const filtered = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       if (filter !== "ALL" && order.status !== filter) return false;
 
@@ -247,6 +344,15 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
     }
   };
 
+  // Advance Order Workflow to next logical stage
+  const advanceOrderStage = (order: Order) => {
+    const currentIndex = ORDER_FLOW_STAGES.indexOf(order.status);
+    if (currentIndex >= 0 && currentIndex < ORDER_FLOW_STAGES.length - 1) {
+      const nextStage = ORDER_FLOW_STAGES[currentIndex + 1];
+      updateStatus(order.id, nextStage);
+    }
+  };
+
   // Download STL file directly
   const handleDownloadStl = async (order: Order, itemIndex = 0) => {
     const item = order.orderItems[itemIndex];
@@ -275,78 +381,143 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
     }
   };
 
-  // Helper for workflow advance button
-  const renderNextActionButton = (order: Order) => {
-    switch (order.status) {
-      case "PENDING":
-        return (
-          <button
-            disabled={updating === order.id}
-            onClick={() => updateStatus(order.id, "CONFIRMED")}
-            className="h-8 px-3.5 bg-[#0F172A] hover:bg-[#020617] disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <FontAwesomeIcon icon={faCheck} className="text-[11px]" />
-            <span>Confirm Order</span>
-          </button>
+  // ─── Filament Handlers ──────────────────────────────────────
+  const handleToggleColorStock = async (color: FilamentItem) => {
+    const nextStock = !color.inStock;
+    // Optimistic update
+    setColors((prev) =>
+      prev.map((c) => (c.id === color.id ? { ...c, inStock: nextStock } : c))
+    );
+    try {
+      await fetch(`/api/admin/filaments/${color.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inStock: nextStock }),
+      });
+    } catch (err) {
+      console.error("Failed to toggle stock:", err);
+      // Revert
+      setColors((prev) =>
+        prev.map((c) => (c.id === color.id ? { ...c, inStock: color.inStock } : c))
+      );
+    }
+  };
+
+  const handleCreateColor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newColorName.trim() || !newColorHex) return;
+    setFilamentActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/filaments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newColorName.trim(),
+          hexCode: newColorHex,
+          materialType: newColorMaterial,
+          inStock: newColorInStock,
+        }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setColors((prev) => [...prev, created]);
+        setIsAddColorModalOpen(false);
+        setNewColorName("");
+        setNewColorHex("#FF6600");
+      } else {
+        alert("Failed to create color. Please check the hex code.");
+      }
+    } catch (err) {
+      console.error("Error creating color:", err);
+    } finally {
+      setFilamentActionLoading(false);
+    }
+  };
+
+  const handleUpdateColor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingColor) return;
+    setFilamentActionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/filaments/${editingColor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingColor.name,
+          hexCode: editingColor.hexCode,
+          materialType: editingColor.materialType,
+          inStock: editingColor.inStock,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setColors((prev) =>
+          prev.map((c) => (c.id === updated.id ? updated : c))
         );
-      case "CONFIRMED":
-        return (
-          <button
-            disabled={updating === order.id}
-            onClick={() => updateStatus(order.id, "PRINTING")}
-            className="h-8 px-3.5 bg-[#059669] hover:bg-[#047857] disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <FontAwesomeIcon icon={faPlay} className="text-[10px]" />
-            <span>Start Print</span>
-          </button>
+        setEditingColor(null);
+      }
+    } catch (err) {
+      console.error("Failed to update color:", err);
+    } finally {
+      setFilamentActionLoading(false);
+    }
+  };
+
+  const handleDeleteColor = async (colorId: string) => {
+    if (!confirm("Are you sure you want to remove this filament from the spool rack?")) return;
+    try {
+      const res = await fetch(`/api/admin/filaments/${colorId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setColors((prev) => prev.filter((c) => c.id !== colorId));
+      }
+    } catch (err) {
+      console.error("Failed to delete color:", err);
+    }
+  };
+
+  // ─── Settings Handlers ──────────────────────────────────────
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!keychainStyle) return;
+    setSettingsSaving(true);
+    setSettingsToast("");
+    try {
+      const res = await fetch(`/api/admin/styles/${keychainStyle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fontFamily: defaultFont,
+          basePrice: Number(basePrice),
+          config: {
+            fontSize: Number(fontSize),
+            extrusionDepth: Number(textDepth),
+            baseDepth: Number(baseDepth),
+            offsetRadius: Number(offsetRadius),
+            earRadius: Number(earRadius),
+            holeRadius: Number(holeRadius),
+          },
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setStyles((prev) =>
+          prev.map((s) => (s.id === updated.id ? updated : s))
         );
-      case "PRINTING":
-        return (
-          <button
-            disabled={updating === order.id}
-            onClick={() => updateStatus(order.id, "PRINTED")}
-            className="h-8 px-3.5 bg-[#6D28D9] hover:bg-[#5B21B6] disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <FontAwesomeIcon icon={faCircleCheck} className="text-[11px]" />
-            <span>Mark Printed</span>
-          </button>
-        );
-      case "PRINTED":
-        return (
-          <button
-            disabled={updating === order.id}
-            onClick={() => updateStatus(order.id, "SHIPPED")}
-            className="h-8 px-3.5 bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <FontAwesomeIcon icon={faTruckFast} className="text-[11px]" />
-            <span>Mark Shipped</span>
-          </button>
-        );
-      case "SHIPPED":
-        return (
-          <button
-            disabled={updating === order.id}
-            onClick={() => updateStatus(order.id, "DELIVERED")}
-            className="h-8 px-3.5 bg-[#15803D] hover:bg-[#166534] disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <FontAwesomeIcon icon={faCircleCheck} className="text-[11px]" />
-            <span>Mark Delivered</span>
-          </button>
-        );
-      case "DELIVERED":
-        return (
-          <span className="text-[#059669] text-xs font-bold uppercase tracking-wider bg-[#DCFCE7] px-2.5 py-1 rounded inline-flex items-center gap-1">
-            <FontAwesomeIcon icon={faCheck} className="text-[10px]" />
-            <span>Fulfilled</span>
-          </span>
-        );
-      default:
-        return null;
+        setSettingsToast("3D Sizing & Typography parameters updated successfully!");
+        setTimeout(() => setSettingsToast(""), 4000);
+      }
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+      alert("Failed to save 3D settings.");
+    } finally {
+      setSettingsSaving(false);
     }
   };
 
   // ─────────────────────────────────────────────────────────────
-  // OPERATOR PASSCODE GATE (Blocks public & customer access)
+  // OPERATOR PASSCODE GATE
   // ─────────────────────────────────────────────────────────────
   if (!hasMounted || !isUnlocked) {
     return (
@@ -358,13 +529,13 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
 
           <div>
             <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold uppercase tracking-wider bg-[#334155] text-[#94A3B8] mb-2">
-              Operator & Slicer Terminal
+              Operator &amp; Slicer Terminal
             </span>
             <h1 className="text-xl font-bold text-white tracking-tight">
-              PrintX3D Workshop Center
+              PrintX3D Admin Portal
             </h1>
             <p className="text-xs text-[#94A3B8] mt-1.5 leading-relaxed">
-              Restricted physical manufacturing pipeline. Enter your operator PIN to access the 3D print queue and download slicer STLs.
+              Manage filament colors, customize 3D typography &amp; sizing parameters, and oversee the real-time production flow.
             </p>
           </div>
 
@@ -397,7 +568,7 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
               type="submit"
               className="w-full h-11 bg-[#059669] hover:bg-[#047857] text-white font-semibold rounded-lg text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Unlock Machine Queue</span>
+              <span>Unlock Admin Station</span>
               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
             </button>
           </form>
@@ -412,13 +583,13 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // UNLOCKED OPERATOR WORKSHOP CONSOLE (Clean, Focused Layout)
+  // UNLOCKED ADMIN & WORKSHOP PORTAL
   // ─────────────────────────────────────────────────────────────
   return (
     <div suppressHydrationWarning className="min-h-screen bg-[#F8FAFC] text-[#0F172A] pb-16">
-      {/* ── Top Bar ── */}
-      <header className="bg-white border-b border-[#E2E8F0] px-6 py-3.5 sticky top-0 z-20 shadow-xs">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      {/* ── Top Header ── */}
+      <header className="bg-white border-b border-[#E2E8F0] px-4 sm:px-6 py-3.5 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-[#0F172A] flex items-center justify-center text-white font-bold text-sm shadow-xs">
               P
@@ -426,26 +597,26 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-[#0F172A] tracking-tight">
-                  PrintX3D Fabrication & Slicer Hub
+                  PrintX3D Control &amp; Fabrication Portal
                 </h1>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]">
-                  PHYSICAL BED READY
+                <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]">
+                  LIVE PRODUCTION
                 </span>
               </div>
               <p className="text-xs text-[#64748B]">
-                Two-Tone 3D Orders • Direct STL Downloads • Printable Bed Travelers
+                Order Flow Pipeline • Filament Inventory • 3D Typographic Sizing
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => window.location.reload()}
-              title="Refresh order queue"
+              title="Refresh console"
               className="h-8 px-3 rounded-lg text-xs font-semibold text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC] transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faRotate} className="text-xs" />
-              <span>Refresh</span>
+              <span className="hidden sm:inline">Refresh</span>
             </button>
 
             <button
@@ -453,402 +624,1245 @@ export default function AdminDashboard({ orders: initialOrders }: Props) {
               className="h-8 px-3 rounded-lg text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faLock} className="text-xs" />
-              <span>Lock Station</span>
+              <span>Lock</span>
             </button>
           </div>
         </div>
+
+        {/* ── Primary Navigation Tabs ── */}
+        <div className="max-w-7xl mx-auto mt-3 border-t border-slate-100 pt-2 flex items-center gap-1 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "orders"
+                ? "bg-[#0F172A] text-white shadow-xs"
+                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+            }`}
+          >
+            <FontAwesomeIcon icon={faBox} className="text-xs" />
+            <span>Order Flow Pipeline</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                activeTab === "orders" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {orders.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("filaments")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "filaments"
+                ? "bg-[#0F172A] text-white shadow-xs"
+                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+            }`}
+          >
+            <FontAwesomeIcon icon={faPalette} className="text-xs" />
+            <span>Filament Spools &amp; Colors</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                activeTab === "filaments" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {colors.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "settings"
+                ? "bg-[#0F172A] text-white shadow-xs"
+                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+            }`}
+          >
+            <FontAwesomeIcon icon={faSliders} className="text-xs" />
+            <span>Typography, Sizing &amp; 3D Parameters</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "preview"
+                ? "bg-[#059669] text-white shadow-xs"
+                : "text-[#059669] hover:bg-emerald-50"
+            }`}
+          >
+            <FontAwesomeIcon icon={faEye} className="text-xs" />
+            <span>Live 3D Test Bench</span>
+          </button>
+        </div>
       </header>
 
-      <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-        {/* ── Metric Status Row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          {ALL_STATUSES.map((s) => {
-            const isSelected = filter === s;
-            const chip = STATUS_CHIPS[s];
-            return (
-              <button
-                key={s}
-                onClick={() => setFilter(filter === s ? "ALL" : s)}
-                className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                  isSelected
-                    ? "bg-white border-[#0F172A] ring-2 ring-[#0F172A]/15 shadow-sm"
-                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1] shadow-xs"
-                }`}
-              >
-                <div className="text-xl font-bold font-mono text-[#0F172A]">
-                  {counts[s] ?? 0}
-                </div>
-                <div className="mt-1">
-                  <span
-                    className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${chip.bg} ${chip.text}`}
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 md:p-8">
+        {/* ═══════════════════════════════════════════════════════
+            TAB 1: ORDER FLOW PIPELINE & PRODUCTION
+        ════════════════════════════════════════════════════════ */}
+        {activeTab === "orders" && (
+          <div className="space-y-6">
+            {/* Metric Status Chips */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              {ORDER_FLOW_STAGES.map((s) => {
+                const isSelected = filter === s;
+                const chip = STATUS_CHIPS[s];
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setFilter(filter === s ? "ALL" : s)}
+                    className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-white border-[#0F172A] ring-2 ring-[#0F172A]/15 shadow-sm"
+                        : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1] shadow-xs"
+                    }`}
                   >
-                    {s}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Search & Filter Controls ── */}
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-80">
-            <input
-              type="text"
-              placeholder="Search by order ID, phone, name, or text…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-8 pr-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:border-[#0F172A] transition-all"
-            />
-            <FontAwesomeIcon
-              icon={faMagnifyingGlass}
-              className="absolute left-2.5 top-2.5 text-xs text-[#94A3B8]"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-2 text-xs text-[#64748B] hover:text-[#0F172A] cursor-pointer"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-[#64748B] w-full sm:w-auto justify-between sm:justify-end">
-            <span>
-              Showing <strong className="text-[#0F172A]">{filtered.length}</strong> of {orders.length} orders
-            </span>
-            {filter !== "ALL" && (
-              <button
-                onClick={() => setFilter("ALL")}
-                className="text-[#059669] font-semibold hover:underline cursor-pointer"
-              >
-                Clear status filter
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Orders Fabrication Queue ── */}
-        {filtered.length === 0 ? (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-12 text-center text-[#64748B] text-sm shadow-sm space-y-3">
-            <div className="text-3xl text-[#94A3B8]">
-              <FontAwesomeIcon icon={faBox} />
-            </div>
-            <div className="font-semibold text-[#0F172A]">No orders match the current criteria</div>
-            <p className="text-xs text-[#94A3B8]">
-              Adjust your search keywords or select &quot;ALL&quot; in the status filter above.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {filtered.map((order) => {
-              const chip = STATUS_CHIPS[order.status];
-              const orderCode = `PX-${order.id.slice(0, 8).toUpperCase()}`;
-
-              // Clean phone number for tel: and whatsapp links
-              const rawPhone = order.customerPhone || "";
-              const cleanDigits = rawPhone.replace(/\D/g, "");
-              const waNumber = cleanDigits.startsWith("0")
-                ? `880${cleanDigits.slice(1)}`
-                : cleanDigits;
-
-              return (
-                <div
-                  key={order.id}
-                  className="bg-white border border-[#E2E8F0] rounded-xl p-5 md:p-6 shadow-sm hover:border-[#CBD5E1] transition-all space-y-5"
-                >
-                  {/* Card Header: Order Code, Customer Contact & Badges */}
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E2E8F0] pb-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-bold text-base bg-[#0F172A] text-white px-2.5 py-0.5 rounded-md">
-                          #{orderCode}
-                        </span>
-                        <span className="font-bold text-base text-[#0F172A]">
-                          {order.customerName}
-                        </span>
-                        <span className="text-xs text-[#64748B]">
-                          • {new Date(order.createdAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </div>
-
-                      {/* Customer Communication Shortcuts */}
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-[#475569] pt-0.5">
-                        {order.customerPhone && (
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold text-[#0F172A] inline-flex items-center gap-1.5">
-                              <FontAwesomeIcon icon={faPhone} className="text-[11px] text-[#64748B]" />
-                              <span>{order.customerPhone}</span>
-                            </span>
-                            <a
-                              href={`tel:${order.customerPhone}`}
-                              className="px-2 py-0.5 rounded bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#0F172A] font-semibold text-[11px] transition-colors"
-                            >
-                              Call
-                            </a>
-                            <a
-                              href={`https://wa.me/${waNumber}?text=${encodeURIComponent(
-                                `Hello ${order.customerName}, this is PrintX3D regarding your 3D custom keychain order #${orderCode}.`
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="px-2 py-0.5 rounded bg-[#DCFCE7] hover:bg-[#BBF7D0] text-[#15803D] font-semibold text-[11px] transition-colors inline-flex items-center gap-1"
-                            >
-                              <FontAwesomeIcon icon={faWhatsapp} className="text-xs" />
-                              <span>WhatsApp</span>
-                            </a>
-                          </div>
-                        )}
-                        <span className="text-[#94A3B8]">|</span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <FontAwesomeIcon icon={faEnvelope} className="text-[11px] text-[#64748B]" />
-                          <span>{order.customerEmail}</span>
-                        </span>
-                      </div>
+                    <div className="text-xl font-bold font-mono text-[#0F172A]">
+                      {counts[s] ?? 0}
                     </div>
-
-                    {/* Status Badge & Workflow Advancement */}
-                    <div className="flex items-center gap-2.5">
-                      <div className="text-right">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-md text-xs font-semibold uppercase tracking-wider border ${chip.bg} ${chip.text} ${chip.border}`}
-                        >
-                          {chip.label}
-                        </span>
-                      </div>
-
-                      {/* Status Manual Dropdown */}
-                      <select
-                        value={order.status}
-                        disabled={updating === order.id}
-                        onChange={(e) =>
-                          updateStatus(order.id, e.target.value as OrderStatus)
-                        }
-                        className="h-8 px-2 bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] focus:outline-none focus:border-[#0F172A]"
+                    <div className="mt-1">
+                      <span
+                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${chip.bg} ${chip.text}`}
                       >
-                        {ALL_STATUSES.map((st) => (
-                          <option key={st} value={st}>
-                            {st}
-                          </option>
-                        ))}
-                      </select>
+                        {s}
+                      </span>
                     </div>
-                  </div>
+                  </button>
+                );
+              })}
+            </div>
 
-                  {/* Physical Manufacturing Items List */}
-                  <div className="space-y-3">
-                    {order.orderItems.map((item, itemIdx) => {
-                      const isDownloading =
-                        downloadingStl === `${order.id}-${itemIdx}`;
-                      const baseColorHex = item.baseColor?.hexCode ?? "#111111";
-                      const textColorHex = item.color.hexCode;
-                      const baseColorName = item.baseColor?.name ?? "Matte Black";
-                      const textColorName = item.color.name;
+            {/* Search & Filter Controls */}
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="relative w-full sm:w-80">
+                <input
+                  type="text"
+                  placeholder="Search by order ID, phone, name, or text…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-9 pl-9 pr-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#0F172A] transition-all"
+                />
+                <FontAwesomeIcon
+                  icon={faMagnifyingGlass}
+                  className="absolute left-3 top-2.5 text-xs text-[#94A3B8]"
+                />
+              </div>
 
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                        >
-                          {/* Item Left: Swatch + Text + Font */}
-                          <div className="flex items-start sm:items-center gap-4">
-                            {/* Two-Tone Visual Preview */}
-                            <div className="relative w-12 h-12 rounded-lg border-2 border-[#0F172A] overflow-hidden flex-shrink-0 shadow-sm flex items-center justify-center">
-                              <div
-                                className="absolute inset-0"
-                                style={{ backgroundColor: baseColorHex }}
-                              />
-                              <div
-                                className="absolute w-6 h-6 rounded-full border border-black/20 shadow-xs"
-                                style={{ backgroundColor: textColorHex }}
-                              />
-                            </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <span className="text-xs text-[#64748B]">Showing:</span>
+                <span className="text-xs font-bold text-[#0F172A] font-mono">
+                  {filteredOrders.length} {filteredOrders.length === 1 ? "Job" : "Jobs"}
+                </span>
+                {filter !== "ALL" && (
+                  <button
+                    onClick={() => setFilter("ALL")}
+                    className="text-xs text-[#059669] hover:underline font-semibold ml-2 cursor-pointer"
+                  >
+                    Clear Filter
+                  </button>
+                )}
+              </div>
+            </div>
 
-                            {/* Custom Text and Dimensions */}
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-lg text-[#0F172A] tracking-wider">
-                                  &quot;{item.customText}&quot;
-                                </span>
-                                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white border border-[#CBD5E1] text-[#475569]">
-                                  Qty: {item.quantity}
-                                </span>
-                              </div>
+            {/* Order Flow Pipeline List */}
+            {filteredOrders.length === 0 ? (
+              <div className="bg-white border border-[#E2E8F0] rounded-xl p-12 text-center shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-[#F1F5F9] text-[#94A3B8] flex items-center justify-center mx-auto text-lg mb-3">
+                  <FontAwesomeIcon icon={faBox} />
+                </div>
+                <h3 className="text-sm font-bold text-[#0F172A]">No orders found</h3>
+                <p className="text-xs text-[#64748B] mt-1">
+                  {filter !== "ALL"
+                    ? `No orders matching filter "${filter}"`
+                    : "No print orders in the queue."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredOrders.map((order) => {
+                  const chip = STATUS_CHIPS[order.status];
+                  const currentStep = chip.step;
 
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#64748B]">
-                                <span>
-                                  <strong>Base:</strong> {baseColorName}
-                                </span>
-                                <span>•</span>
-                                <span>
-                                  <strong>Top:</strong> {textColorName}
-                                </span>
-                                <span>•</span>
-                                <span className="font-mono text-[11px]">
-                                  Font: {item.fontStyle || "helvetiker_bold"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Item Right: Direct Slicer Download Button */}
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button
-                              type="button"
-                              disabled={isDownloading}
-                              onClick={() => handleDownloadStl(order, itemIdx)}
-                              className="h-9 px-4 bg-[#059669] hover:bg-[#047857] disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95"
-                            >
-                              <FontAwesomeIcon icon={faDownload} className="text-xs" />
-                              <span>
-                                {isDownloading ? "Generating STL…" : "Download .STL"}
+                  return (
+                    <div
+                      key={order.id}
+                      className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs hover:border-[#CBD5E1] transition-all space-y-4"
+                    >
+                      {/* Top Row: Customer & Order ID */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono font-bold bg-[#0F172A] text-white px-2.5 py-1 rounded">
+                            PX-{order.id.slice(0, 8).toUpperCase()}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-[#0F172A]">
+                                {order.customerName}
                               </span>
-                            </button>
+                              <span className="text-xs text-[#64748B] font-mono">
+                                • {new Date(order.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-[#64748B] mt-0.5">
+                              {order.customerPhone && (
+                                <a
+                                  href={`tel:${order.customerPhone}`}
+                                  className="hover:text-[#0F172A] flex items-center gap-1"
+                                >
+                                  <FontAwesomeIcon icon={faPhone} className="text-[10px]" />
+                                  <span>{order.customerPhone}</span>
+                                </a>
+                              )}
+                              {order.customerPhone && (
+                                <a
+                                  href={`https://wa.me/${order.customerPhone.replace(/[^0-9]/g, "")}?text=Hello%20${encodeURIComponent(
+                                    order.customerName
+                                  )},%20regarding%20your%20PrintX3D%20custom%20order%20PX-${order.id.slice(
+                                    0,
+                                    8
+                                  ).toUpperCase()}:`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#059669] hover:underline flex items-center gap-1 font-semibold"
+                                >
+                                  <FontAwesomeIcon icon={faWhatsapp} className="text-xs" />
+                                  <span>WhatsApp</span>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
 
-                  {/* Card Footer: Address, Total & Print Slip Trigger */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-[#64748B] border-t border-[#F1F5F9]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-[#0F172A] inline-flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faLocationDot} className="text-[#059669]" />
-                        <span>Delivery Address:</span>
-                      </span>
-                      <span className="text-[#334155]">{order.shippingAddress}</span>
+                        {/* Order Total & Status Selector */}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <span className="text-sm font-bold font-mono text-[#0F172A]">
+                              ৳{order.totalPrice.toFixed(2)}
+                            </span>
+                            <div className="text-[10px] text-[#64748B] uppercase font-mono">
+                              {order.paymentStatus === "PAID" ? (
+                                <span className="text-emerald-600 font-bold">PAID</span>
+                              ) : (
+                                <span>Cash / Pending</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <select
+                            value={order.status}
+                            disabled={updating === order.id}
+                            onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus)}
+                            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border cursor-pointer focus:outline-none transition-all ${chip.bg} ${chip.text} ${chip.border}`}
+                          >
+                            {ORDER_FLOW_STAGES.map((s) => (
+                              <option key={s} value={s}>
+                                {STATUS_CHIPS[s].label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Visual Order Flow Stage Progress Bar */}
+                      <div className="bg-[#F8FAFC] border border-[#E2E8F0]/80 rounded-lg p-3">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-[#64748B] mb-2">
+                          <span className="uppercase tracking-wider text-[10px]">
+                            Live Production Flow:
+                          </span>
+                          <span className="font-mono text-[#0F172A] font-bold">
+                            Stage {currentStep} of {ORDER_FLOW_STAGES.length}: {chip.label}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-6 gap-1.5">
+                          {ORDER_FLOW_STAGES.map((st, idx) => {
+                            const stepNum = idx + 1;
+                            const isDone = stepNum < currentStep;
+                            const isCurrent = stepNum === currentStep;
+                            const stageChip = STATUS_CHIPS[st];
+
+                            return (
+                              <div
+                                key={st}
+                                className={`rounded px-1.5 py-1 text-center border transition-all ${
+                                  isCurrent
+                                    ? `${stageChip.bg} ${stageChip.border} ring-1 ring-[#0F172A]/20`
+                                    : isDone
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                    : "bg-white border-slate-200 text-slate-400"
+                                }`}
+                              >
+                                <div className="text-[10px] font-mono font-bold leading-tight flex items-center justify-center gap-1">
+                                  {isDone ? (
+                                    <FontAwesomeIcon icon={faCheck} className="text-[9px] text-emerald-600" />
+                                  ) : (
+                                    <span>{stepNum}.</span>
+                                  )}
+                                  <span className="truncate">{st}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Order Items List with Two-Tone Colors */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {order.orderItems.map((item, idx) => {
+                          const baseColorHex = item.baseColor?.hexCode || "#111111";
+                          const textColorHex = item.color.hexCode;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="border border-[#E2E8F0] rounded-lg p-3.5 bg-white flex flex-col justify-between gap-3 shadow-xs"
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] font-mono text-[#64748B] uppercase">
+                                    {item.style.name}
+                                  </span>
+                                  <span className="text-xs font-bold font-mono text-[#0F172A]">
+                                    Qty: {item.quantity} × ৳{item.unitPrice.toFixed(2)}
+                                  </span>
+                                </div>
+
+                                <div className="text-base font-bold text-[#0F172A] tracking-tight mt-1">
+                                  "{item.customText}"
+                                </div>
+                                <div className="text-xs text-[#64748B] font-mono mt-0.5">
+                                  Typeface: {item.fontStyle || "helvetiker_bold"}
+                                </div>
+                              </div>
+
+                              {/* Two-Tone Color Indicator */}
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                                <div className="flex items-center gap-2">
+                                  {/* Lettering color badge */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs inline-block"
+                                      style={{ backgroundColor: textColorHex }}
+                                    />
+                                    <span className="font-semibold text-[#0F172A]">
+                                      {item.color.name}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-slate-400">on</span>
+
+                                  {/* Baseplate color badge */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs inline-block"
+                                      style={{ backgroundColor: baseColorHex }}
+                                    />
+                                    <span className="text-[#64748B]">
+                                      {item.baseColor?.name || "Matte Black"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Quick Download STL */}
+                                <button
+                                  disabled={downloadingStl === `${order.id}-${idx}`}
+                                  onClick={() => handleDownloadStl(order, idx)}
+                                  className="h-7 px-2.5 rounded bg-slate-100 hover:bg-slate-200 text-[#0F172A] font-semibold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                                >
+                                  {downloadingStl === `${order.id}-${idx}` ? (
+                                    <>
+                                      <FontAwesomeIcon icon={faRotate} className="animate-spin text-[10px]" />
+                                      <span>Slicing…</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
+                                      <span>Get STL</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Bottom Action Footer */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                          <FontAwesomeIcon icon={faLocationDot} className="text-[10px]" />
+                          <span className="truncate max-w-sm">{order.shippingAddress}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelectedTicketOrder(order)}
+                            className="h-8 px-3 rounded-lg border border-[#CBD5E1] text-[#0F172A] hover:bg-[#F8FAFC] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
+                          >
+                            <FontAwesomeIcon icon={faPrint} className="text-xs" />
+                            <span>Print Slicer Ticket</span>
+                          </button>
+
+                          {order.status !== "DELIVERED" && (
+                            <button
+                              disabled={updating === order.id}
+                              onClick={() => advanceOrderStage(order)}
+                              className="h-8 px-3.5 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all disabled:opacity-50"
+                            >
+                              <span>Next Stage</span>
+                              <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            TAB 2: FILAMENT COLORS & SPOOL INVENTORY
+        ════════════════════════════════════════════════════════ */}
+        {activeTab === "filaments" && (
+          <div className="space-y-6">
+            {/* Header with Add Button */}
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-[#0F172A]">
+                  Filament Spool Inventory &amp; Color Palette
+                </h2>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Enable, disable, or add custom filament colors. Out-of-stock filaments automatically hide from the customer customizer in real time.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setIsAddColorModalOpen(true)}
+                className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              >
+                <FontAwesomeIcon icon={faPlus} className="text-xs" />
+                <span>Add New Filament Color</span>
+              </button>
+            </div>
+
+            {/* Filament Spools Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {colors.map((color) => {
+                return (
+                  <div
+                    key={color.id}
+                    className={`bg-white border rounded-xl p-4 shadow-xs transition-all flex flex-col justify-between gap-3 ${
+                      color.inStock
+                        ? "border-[#E2E8F0] hover:border-[#CBD5E1]"
+                        : "border-slate-200 opacity-60 bg-slate-50/70"
+                    }`}
+                  >
+                    <div>
+                      {/* Color Preview Swatch */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-8 h-8 rounded-full border-2 border-white shadow-md ring-1 ring-black/15 flex-shrink-0"
+                            style={{ backgroundColor: color.hexCode }}
+                          />
+                          <div>
+                            <h3 className="text-sm font-bold text-[#0F172A] leading-tight">
+                              {color.name}
+                            </h3>
+                            <span className="text-[11px] font-mono text-[#64748B]">
+                              {color.hexCode}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 uppercase">
+                          {color.materialType}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 ml-auto">
-                      <span className="font-mono text-sm font-bold text-[#0F172A]">
-                        ৳{order.totalPrice.toFixed(2)}
-                      </span>
-
-                      {/* Printable Ticket / Bed Slip Modal Button */}
+                    {/* Stock Switch and Edit/Delete Controls */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      {/* In-Stock Toggle */}
                       <button
-                        onClick={() => setSelectedTicketOrder(order)}
-                        className="h-8 px-3 rounded-lg text-xs font-semibold text-[#0F172A] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] transition-all flex items-center gap-1.5 cursor-pointer"
+                        type="button"
+                        onClick={() => handleToggleColorStock(color)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                          color.inStock
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}
                       >
-                        <FontAwesomeIcon icon={faPrint} className="text-xs text-[#64748B]" />
-                        <span>Print Bed Ticket</span>
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            color.inStock ? "bg-emerald-500" : "bg-slate-400"
+                          }`}
+                        />
+                        <span>{color.inStock ? "In Stock" : "Out of Stock"}</span>
                       </button>
 
-                      {/* Fast Forward Workflow Action */}
-                      {renderNextActionButton(order)}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setEditingColor(color)}
+                          className="w-7 h-7 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center text-xs transition-all cursor-pointer"
+                          title="Edit color"
+                        >
+                          <FontAwesomeIcon icon={faPenToSquare} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteColor(color.id)}
+                          className="w-7 h-7 rounded text-rose-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs transition-all cursor-pointer"
+                          title="Delete filament"
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            TAB 3: TYPOGRAPHY, SIZING & 3D PARAMETERS
+        ════════════════════════════════════════════════════════ */}
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            {/* Notification Toast */}
+            {settingsToast && (
+              <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
+                <FontAwesomeIcon icon={faCheck} className="text-emerald-600 text-sm" />
+                <span>{settingsToast}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="space-y-6">
+              {/* 3D Sizing & Geometry Parameters Card */}
+              <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
+                <div>
+                  <h2 className="text-base font-bold text-[#0F172A]">
+                    Physical 3D Print Sizing &amp; Geometry Multipliers
+                  </h2>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Adjust font size, layer extrusion heights, baseplate contour radius, and keychain hole dimensions.
+                  </p>
                 </div>
-              );
-            })}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Font Size Multiplier */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faFont} className="text-[#059669]" />
+                        <span>Font Size Multiplier</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{fontSize.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={1.8}
+                      step={0.05}
+                      value={fontSize}
+                      onChange={(e) => setFontSize(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Scale of the vector text glyphs (Default: 1.20).
+                    </p>
+                  </div>
+
+                  {/* Lettering Emboss Depth */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
+                        <span>Text Emboss Depth</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{(textDepth * 10).toFixed(1)} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.10}
+                      max={0.35}
+                      step={0.01}
+                      value={textDepth}
+                      onChange={(e) => setTextDepth(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Height of the extruded foreground text (Default: 1.8mm).
+                    </p>
+                  </div>
+
+                  {/* Baseplate Depth */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
+                        <span>Baseplate Depth</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{(baseDepth * 10).toFixed(1)} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.12}
+                      max={0.40}
+                      step={0.02}
+                      value={baseDepth}
+                      onChange={(e) => setBaseDepth(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Thickness of the rear structural baseplate (Default: 2.0mm).
+                    </p>
+                  </div>
+
+                  {/* Baseplate Contour Offset Radius R */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                        <span>Contour Margin (R)</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{(offsetRadius * 10).toFixed(1)} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.12}
+                      max={0.30}
+                      step={0.01}
+                      value={offsetRadius}
+                      onChange={(e) => setOffsetRadius(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Offset distance around the letter perimeter (Default: 1.8mm).
+                    </p>
+                  </div>
+
+                  {/* Keyring Eyelet Radius */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                        <span>Keyring Eyelet Radius</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{(earRadius * 10).toFixed(1)} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.16}
+                      max={0.32}
+                      step={0.01}
+                      value={earRadius}
+                      onChange={(e) => setEarRadius(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Outer radius of the keychain attachment loop (Default: 2.2mm).
+                    </p>
+                  </div>
+
+                  {/* Keyring Through-Hole Radius */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                        <span>Hole Diameter</span>
+                      </label>
+                      <span className="font-mono text-emerald-700 font-bold">{(holeRadius * 20).toFixed(1)} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.06}
+                      max={0.16}
+                      step={0.01}
+                      value={holeRadius}
+                      onChange={(e) => setHoleRadius(parseFloat(e.target.value))}
+                      className="w-full accent-[#059669] cursor-pointer"
+                    />
+                    <p className="text-[11px] text-[#64748B]">
+                      Diameter of the hole for split keyring (Default: 2.0mm).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing & Typography Catalog */}
+              <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
+                <div>
+                  <h2 className="text-base font-bold text-[#0F172A]">
+                    Pricing &amp; Default Typographic Style
+                  </h2>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Set the base customizer product price and the default 3D typeface.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Base Price */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
+                      Base Product Price (৳ / $)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-2.5 text-sm font-bold text-slate-500 font-mono">
+                        ৳
+                      </span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1"
+                        value={basePrice}
+                        onChange={(e) => setBasePrice(parseFloat(e.target.value) || 0)}
+                        className="w-full h-10 pl-8 pr-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Default Font Style */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
+                      Default Store Typography
+                    </label>
+                    <select
+                      value={defaultFont}
+                      onChange={(e) => setDefaultFont(e.target.value)}
+                      className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
+                    >
+                      {FONT_STYLE_OPTIONS.map((font) => (
+                        <option key={font.id} value={font.id}>
+                          {font.name} — {font.family}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Available 3D Font Styles Grid */}
+                <div className="space-y-3 pt-4 border-t border-slate-100">
+                  <h3 className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+                    Available 3D Typography Styles
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                    {FONT_STYLE_OPTIONS.map((f) => (
+                      <div
+                        key={f.id}
+                        className={`p-2.5 rounded-lg border text-center transition-all ${
+                          defaultFont === f.id
+                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                            : "bg-slate-50 border-slate-200 text-slate-700"
+                        }`}
+                      >
+                        <div className="text-xs font-bold truncate">{f.name}</div>
+                        <div className="text-[10px] opacity-75 font-mono truncate">{f.family}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Save Button */}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={settingsSaving}
+                  className="h-10 px-6 bg-[#0F172A] hover:bg-[#020617] disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  {settingsSaving ? (
+                    <>
+                      <FontAwesomeIcon icon={faRotate} className="animate-spin text-xs" />
+                      <span>Saving Parameters…</span>
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faCheck} className="text-xs" />
+                      <span>Save 3D Parameters &amp; Pricing</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            TAB 4: LIVE 3D TEST BENCH
+        ════════════════════════════════════════════════════════ */}
+        {activeTab === "preview" && (
+          <div className="space-y-6">
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-[#0F172A]">
+                  Operator 3D Vector Contour Test Bench
+                </h2>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Test custom text, new filament colors, and typography in the live Three.js CAD renderer before customers place orders.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Controls */}
+              <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                    Test Word / Lettering
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    value={testText}
+                    onChange={(e) => setTestText(e.target.value)}
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                    Typographic Style
+                  </label>
+                  <select
+                    value={testFontStyle}
+                    onChange={(e) => setTestFontStyle(e.target.value)}
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
+                  >
+                    {FONT_STYLE_OPTIONS.map((font) => (
+                      <option key={font.id} value={font.id}>
+                        {font.name} ({font.family})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                    Lettering Color (Top Layer)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {colors
+                      .filter((c) => c.inStock)
+                      .map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setTestTextColor(c.hexCode)}
+                          className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
+                            testTextColor === c.hexCode
+                              ? "border-black scale-110 shadow-md ring-2 ring-emerald-500"
+                              : "border-white hover:scale-105"
+                          }`}
+                          style={{ backgroundColor: c.hexCode }}
+                          title={c.name}
+                        />
+                      ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                    Baseplate Color (Bottom Layer)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {colors
+                      .filter((c) => c.inStock)
+                      .map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setTestBaseColor(c.hexCode)}
+                          className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
+                            testBaseColor === c.hexCode
+                              ? "border-black scale-110 shadow-md ring-2 ring-emerald-500"
+                              : "border-white hover:scale-105"
+                          }`}
+                          style={{ backgroundColor: c.hexCode }}
+                          title={c.name}
+                        />
+                      ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#0F172A]">Keyring Loop Socket</span>
+                  <input
+                    type="checkbox"
+                    checked={testKeychainLoop}
+                    onChange={(e) => setTestKeychainLoop(e.target.checked)}
+                    className="w-4 h-4 accent-slate-900 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Right: 3D Canvas */}
+              <div className="lg:col-span-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl overflow-hidden shadow-xs min-h-[360px]">
+                <StudioCanvas
+                  text={testText}
+                  textColor={testTextColor}
+                  baseColor={testBaseColor}
+                  fontStyle={testFontStyle}
+                  hasKeychainLoop={testKeychainLoop}
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-          PRINTABLE JOB TICKET / PACKING SLIP MODAL
-      ───────────────────────────────────────────────────────────── */}
-      {selectedTicketOrder && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 text-[#0F172A] space-y-5 border border-[#E2E8F0]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-              <div>
-                <h3 className="font-bold text-base text-[#0F172A]">
-                  Print Bed Ticket & Packing Traveler
-                </h3>
-                <p className="text-xs text-[#64748B]">
-                  Attach to 3D printer bed or insert into delivery package
-                </p>
-              </div>
+      {/* ─────────────────────────────────────────────────────────
+          MODAL: ADD NEW FILAMENT COLOR
+      ────────────────────────────────────────────────────────── */}
+      {isAddColorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                <FontAwesomeIcon icon={faPalette} className="text-emerald-600" />
+                <span>Add New Filament to Inventory</span>
+              </h3>
               <button
-                onClick={() => setSelectedTicketOrder(null)}
-                className="w-8 h-8 rounded-lg text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] flex items-center justify-center text-sm cursor-pointer"
+                onClick={() => setIsAddColorModalOpen(false)}
+                className="w-7 h-7 rounded text-slate-400 hover:text-slate-700 flex items-center justify-center cursor-pointer"
               >
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
 
-            {/* Printable Content Container */}
-            <div id="print-bed-ticket" className="border-2 border-dashed border-[#0F172A] p-5 rounded-lg space-y-4 bg-white">
-              <div className="flex items-center justify-between border-b border-black/20 pb-3">
+            <form onSubmit={handleCreateColor} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Color / Spool Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Emerald Silk Green"
+                  value={newColorName}
+                  onChange={(e) => setNewColorName(e.target.value)}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <div className="font-bold text-lg tracking-tight">PRINTX3D FABRICATION TICKET</div>
-                  <div className="font-mono text-xs text-black/60">
-                    ORDER #PX-{selectedTicketOrder.id.slice(0, 8).toUpperCase()}
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                    Hex Color Code
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newColorHex}
+                      onChange={(e) => setNewColorHex(e.target.value.toUpperCase())}
+                      className="w-9 h-10 rounded border border-slate-200 cursor-pointer p-0.5 bg-slate-50"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={newColorHex}
+                      onChange={(e) => setNewColorHex(e.target.value.toUpperCase())}
+                      className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold uppercase focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                    />
                   </div>
                 </div>
-                <div className="text-right font-mono text-xs">
-                  <div>Date: {new Date(selectedTicketOrder.createdAt).toLocaleDateString()}</div>
-                  <div className="font-bold uppercase">{selectedTicketOrder.status}</div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                    Material Type
+                  </label>
+                  <select
+                    value={newColorMaterial}
+                    onChange={(e) => setNewColorMaterial(e.target.value as any)}
+                    className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
+                  >
+                    <option value="PLA">PLA (Standard)</option>
+                    <option value="PETG">PETG (Durable)</option>
+                    <option value="TPU">TPU (Flexible)</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Customer Box */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-3 rounded text-xs space-y-1">
-                <div><strong>Customer:</strong> {selectedTicketOrder.customerName}</div>
-                <div><strong>Phone:</strong> {selectedTicketOrder.customerPhone || "N/A"}</div>
-                <div><strong>Ship To:</strong> {selectedTicketOrder.shippingAddress}</div>
+              {/* Quick Preset Colors Palette */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
+                  Quick Palette Suggestions:
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "#111111",
+                    "#F8FAFC",
+                    "#FF6600",
+                    "#00A3FF",
+                    "#E50914",
+                    "#FFD000",
+                    "#059669",
+                    "#FF2E93",
+                    "#8B5CF6",
+                    "#D4AF37",
+                  ].map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => setNewColorHex(hex)}
+                      className="w-6 h-6 rounded-full border border-slate-300 shadow-xs cursor-pointer hover:scale-110 transition-transform"
+                      style={{ backgroundColor: hex }}
+                    />
+                  ))}
+                </div>
               </div>
 
-              {/* Items & Slicing Table */}
-              <div className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-black/70">
-                  3D Print Machine Specifications
-                </div>
-                {selectedTicketOrder.orderItems.map((item, idx) => (
-                  <div key={idx} className="border border-black/20 p-3 rounded text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-base">&quot;{item.customText}&quot;</span>
-                      <span className="font-mono">Qty: {item.quantity}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-black/10">
-                      <div>
-                        <span className="text-black/60 block">1. Base Filament:</span>
-                        <strong>{item.baseColor?.name ?? "Matte Black"} (0.00 – 2.00mm)</strong>
-                      </div>
-                      <div>
-                        <span className="text-black/60 block">2. Text Filament:</span>
-                        <strong>{item.color.name} (2.00 – 3.80mm)</strong>
-                      </div>
-                    </div>
-                    <div className="bg-amber-50 border border-amber-200 p-1.5 rounded text-[11px] text-amber-900 font-mono">
-                      Filament Swap Command: PAUSE @ Z = 2.00 mm (Layer 11)
-                    </div>
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <input
+                  type="checkbox"
+                  id="inStockCheck"
+                  checked={newColorInStock}
+                  onChange={(e) => setNewColorInStock(e.target.checked)}
+                  className="w-4 h-4 accent-slate-900 cursor-pointer"
+                />
+                <label htmlFor="inStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
+                  Available in stock immediately
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddColorModalOpen(false)}
+                  className="h-9 px-4 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={filamentActionLoading}
+                  className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {filamentActionLoading ? "Adding Spool…" : "Add to Spool Rack"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────
+          MODAL: EDIT FILAMENT COLOR
+      ────────────────────────────────────────────────────────── */}
+      {editingColor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                <FontAwesomeIcon icon={faPenToSquare} className="text-slate-800" />
+                <span>Edit Filament Spool</span>
+              </h3>
+              <button
+                onClick={() => setEditingColor(null)}
+                className="w-7 h-7 rounded text-slate-400 hover:text-slate-700 flex items-center justify-center cursor-pointer"
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateColor} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  Filament Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingColor.name}
+                  onChange={(e) =>
+                    setEditingColor({ ...editingColor, name: e.target.value })
+                  }
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                    Hex Code
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={editingColor.hexCode}
+                      onChange={(e) =>
+                        setEditingColor({
+                          ...editingColor,
+                          hexCode: e.target.value.toUpperCase(),
+                        })
+                      }
+                      className="w-9 h-10 rounded border border-slate-200 cursor-pointer p-0.5 bg-slate-50"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={editingColor.hexCode}
+                      onChange={(e) =>
+                        setEditingColor({
+                          ...editingColor,
+                          hexCode: e.target.value.toUpperCase(),
+                        })
+                      }
+                      className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold uppercase focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                    />
                   </div>
-                ))}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                    Material Type
+                  </label>
+                  <select
+                    value={editingColor.materialType}
+                    onChange={(e) =>
+                      setEditingColor({
+                        ...editingColor,
+                        materialType: e.target.value as any,
+                      })
+                    }
+                    className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
+                  >
+                    <option value="PLA">PLA (Standard)</option>
+                    <option value="PETG">PETG (Durable)</option>
+                    <option value="TPU">TPU (Flexible)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Signoff footer */}
-              <div className="grid grid-cols-2 gap-4 pt-3 border-t border-black/20 text-[10px] font-mono">
-                <div>Printed By: ___________________</div>
-                <div>QA / Cleaned: _________________</div>
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <input
+                  type="checkbox"
+                  id="editInStockCheck"
+                  checked={editingColor.inStock}
+                  onChange={(e) =>
+                    setEditingColor({ ...editingColor, inStock: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-slate-900 cursor-pointer"
+                />
+                <label htmlFor="editInStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
+                  In Stock &amp; Visible in Customer Customizer
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingColor(null)}
+                  className="h-9 px-4 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={filamentActionLoading}
+                  className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {filamentActionLoading ? "Saving…" : "Update Spool"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────
+          PRINTABLE JOB TICKET MODAL
+      ────────────────────────────────────────────────────────── */}
+      {selectedTicketOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs print:p-0 print:bg-white">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5 print:border-none print:shadow-none print:p-0">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
+                  FABRICATION TRAVELER
+                </span>
+                <h3 className="text-base font-bold text-[#0F172A] mt-1">
+                  Job Ticket: PX-{selectedTicketOrder.id.slice(0, 8).toUpperCase()}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedTicketOrder(null)}
+                className="w-7 h-7 rounded text-slate-400 hover:text-slate-700 flex items-center justify-center cursor-pointer print:hidden"
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </div>
+
+            {/* Slicing Specifications Table */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-3 font-mono">
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-500">Customer:</span>
+                <span className="font-bold text-[#0F172A]">{selectedTicketOrder.customerName}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-500">Phone:</span>
+                <span className="font-bold text-[#0F172A]">
+                  {selectedTicketOrder.customerPhone || "N/A"}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-500">Current Status:</span>
+                <span className="font-bold text-emerald-700 uppercase">
+                  {selectedTicketOrder.status}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-500">Nozzle / Slicer:</span>
+                <span className="font-bold text-[#0F172A]">0.4mm • 0.20mm Standard Layer</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Bed Temp:</span>
+                <span className="font-bold text-[#0F172A]">60°C Textured PEI Sheet</span>
               </div>
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
+            {/* Items in Job */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+                Print Items ({selectedTicketOrder.orderItems.length})
+              </span>
+              {selectedTicketOrder.orderItems.map((item, i) => (
+                <div
+                  key={item.id}
+                  className="border border-slate-200 rounded-lg p-3 bg-white text-xs space-y-1.5"
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="text-sm text-[#0F172A]">"{item.customText}"</span>
+                    <span className="font-mono text-slate-500">Qty: {item.quantity}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-[11px] text-[#64748B]">
+                    <span>Top Layer: <strong className="text-slate-900">{item.color.name}</strong></span>
+                    <span>Base: <strong className="text-slate-900">{item.baseColor?.name || "Matte Black"}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 print:hidden">
               <button
                 type="button"
                 onClick={() => setSelectedTicketOrder(null)}
-                className="h-9 px-4 rounded-lg text-xs font-semibold text-[#64748B] hover:bg-[#F1F5F9] cursor-pointer"
+                className="h-9 px-4 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Close
               </button>
-
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="h-9 px-4 rounded-lg text-xs font-semibold bg-[#0F172A] hover:bg-[#020617] text-white flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faPrint} className="text-xs" />
-                <span>Send to Printer (Slip)</span>
+                <span>Print Physical Sheet</span>
               </button>
             </div>
           </div>
