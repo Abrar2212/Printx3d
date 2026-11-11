@@ -33,9 +33,9 @@ export default function HeroSection({
           {/* ── Left Column: Editorial & Value Proposition ── */}
           <div className="lg:col-span-7 space-y-6 text-left">
             {/* Pill Badge */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#059669]/10 border border-[#059669]/20 text-[#059669] text-xs font-semibold uppercase tracking-wider shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-[#059669] animate-pulse" />
-              <span>Two-Tone 3D Contour Fabrication</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#059669]/10 border border-[#059669]/20 text-[#059669] text-xs font-semibold shadow-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#059669] animate-pulse" />
+              <span>3D Printed Keychains</span>
             </div>
 
             {/* Main Headline */}
@@ -44,17 +44,15 @@ export default function HeroSection({
               <span className="text-[#059669]">custom key</span>.
             </h1>
 
-            {/* Soothing Body Narrative */}
+            {/* Body */}
             <p className="text-base sm:text-lg text-[#64748B] max-w-xl leading-relaxed">
-              Dual-layer 3D printed name keychains with a solid contour
-              background plate and embossed lettering on top. Choose your
-              contrasting filament pair and custom font style with live 3D preview.
+              Personalized two-tone 3D keychains. Pick your colors, font, and custom name with instant 3D preview.
             </p>
 
             {/* Quick Presets / Try It Out */}
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2 pt-1">
               <span className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider block">
-                Popular real product combinations:
+                Popular presets:
               </span>
               <div className="flex flex-wrap gap-2">
                 {sampleKeys.map((item) => (

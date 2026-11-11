@@ -13,14 +13,9 @@ export default function FontStyleSelector({
 }: FontStyleSelectorProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between items-center">
-        <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
-          Typographic Style
-        </label>
-        <span className="text-[10px] text-[#64748B] font-mono">
-          3D Vector Contour
-        </span>
-      </div>
+      <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
+        Font
+      </label>
 
       <div className="grid grid-cols-3 gap-1.5">
         {FONT_STYLE_OPTIONS.map((font) => {

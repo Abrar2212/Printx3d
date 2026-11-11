@@ -72,3 +72,4 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "Failed to delete color" }, { status: 500 });
   }
 }
+

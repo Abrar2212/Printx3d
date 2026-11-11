@@ -230,22 +230,14 @@ export default function CustomizerStudio({ styles, colors }: Props) {
         className="scroll-mt-14 py-10 bg-[#F8FAFC]"
       >
         <div className="max-w-7xl mx-auto px-6 mb-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
             <div>
-              <span className="text-xs font-bold text-[#059669] uppercase tracking-wider bg-[#059669]/10 px-2 py-0.5 rounded">
-                Live 3D Customizer
-              </span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-[#0F172A] tracking-tight mt-1">
-                Design Your Two-Tone 3D Key
+              <h2 className="text-2xl md:text-3xl font-extrabold text-[#0F172A] tracking-tight">
+                Customize Keychain
               </h2>
               <p className="text-xs sm:text-sm text-[#64748B] mt-0.5">
-                Inspect the embossed lettering, background plate, and keychain ring in real time.
+                Real-time 3D preview.
               </p>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-[#64748B] bg-white border border-[#E2E8F0] px-3 py-1.5 rounded-lg shadow-2xs">
-              <span className="inline-block w-2 h-2 rounded-full bg-[#059669] animate-pulse" />
-              <span>Two-Tone Real-Time Slicing Simulation</span>
             </div>
           </div>
         </div>
@@ -271,24 +263,15 @@ export default function CustomizerStudio({ styles, colors }: Props) {
             <aside className="w-full lg:w-[460px] h-auto lg:h-full flex flex-col bg-white overflow-hidden rounded-b-2xl lg:rounded-none">
               {/* Header */}
               <div className="px-5 py-3 border-b border-[#E2E8F0] bg-white flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="text-sm font-bold text-[#0F172A]">
-                    Key Configuration
-                  </h3>
-                  <p className="text-[11px] text-[#64748B]">
-                    Type your name &amp; select custom styling
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#059669] bg-[#059669]/10 px-2 py-0.5 rounded font-semibold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#059669] animate-pulse" />
-                  <span>Real-Time Sync</span>
-                </div>
+                <h3 className="text-sm font-bold text-[#0F172A]">
+                  Options
+                </h3>
               </div>
 
               {/* Scrollable controls body */}
               <div className="flex-1 overflow-y-auto px-5 py-3.5 space-y-4">
                 {/* 1. Name & Typographic Style (Directly Connected) */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <TextInput value={text} onChange={setText} />
                   <FontStyleSelector
                     selectedId={selectedFontStyle}
@@ -306,8 +289,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
 
                 {/* 3. Lettering Color (Foreground) */}
                 <ColorPicker
-                  label="Lettering Color (Top Layer)"
-                  sublabel="Embossed extruded name color"
+                  label="Letter Color"
                   colors={colors}
                   selectedId={selectedTextColorId}
                   onSelect={setSelectedTextColorId}
@@ -315,8 +297,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
 
                 {/* 4. Baseplate Color (Background Key) */}
                 <ColorPicker
-                  label="Key Background Color (Contour Base)"
-                  sublabel="Solid backplate and eyelet ring"
+                  label="Base Color"
                   colors={colors}
                   selectedId={selectedBaseColorId}
                   onSelect={setSelectedBaseColorId}
@@ -337,7 +318,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                     ৳{selectedStyle?.basePrice ? (selectedStyle.basePrice).toFixed(2) : "5.99"}
                   </div>
                   <span className="text-[10px] text-[#64748B]">
-                    Two-tone print + split ring included
+                    Split ring included
                   </span>
                 </div>
 
@@ -346,7 +327,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                   disabled={!text.trim() || !selectedStyleId || !selectedTextColorId}
                   className="h-10 px-5 bg-[#0F172A] hover:bg-[#020617] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-xs transition-all shadow-xs active:scale-[0.99] flex items-center gap-2 shrink-0 cursor-pointer"
                 >
-                  <span>Order Custom Key</span>
+                  <span>Order Now</span>
                   <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
                 </button>
               </div>

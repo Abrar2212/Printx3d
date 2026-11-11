@@ -10,10 +10,10 @@ export default function TextInput({ value, onChange, maxLength = 30 }: TextInput
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex justify-between items-center">
-        <label className="text-sm font-medium text-[#0F172A]">
-          Custom Lettering / Name
+        <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
+          Name
         </label>
-        <span className="text-xs text-[#64748B] font-mono">
+        <span className="text-[10px] text-[#64748B] font-mono">
           {value.length}/{maxLength}
         </span>
       </div>
@@ -22,12 +22,9 @@ export default function TextInput({ value, onChange, maxLength = 30 }: TextInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
         maxLength={maxLength}
-        placeholder="e.g. Dr. Sterling"
-        className="h-[44px] px-3.5 py-2.5 rounded-lg bg-white border border-[#CBD5E1] text-[#0F172A] placeholder-[#94A3B8] text-base sm:text-sm focus:outline-none focus:border-[#0F172A] focus:ring-2 focus:ring-[#0F172A]/10 transition-all shadow-xs"
+        placeholder="Type a name..."
+        className="h-10 px-3.5 rounded-lg bg-white border border-[#CBD5E1] text-[#0F172A] placeholder-[#94A3B8] text-sm focus:outline-none focus:border-[#0F172A] focus:ring-1 focus:ring-[#0F172A]/15 transition-all shadow-2xs"
       />
-      <span className="text-xs text-[#64748B]">
-        Supports standard Latin characters and punctuation.
-      </span>
     </div>
   );
 }

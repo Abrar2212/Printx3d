@@ -37,14 +37,9 @@ export default function ColorDuoPicker({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between items-center">
-        <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
-          Two-Tone Color Pairings
-        </label>
-        <span className="text-[10px] text-[#64748B] font-mono">
-          From Real Prints
-        </span>
-      </div>
+      <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
+        Color Presets
+      </label>
 
       <div className="flex flex-wrap items-center gap-2">
         {COLOR_DUO_PRESETS.map((preset) => {

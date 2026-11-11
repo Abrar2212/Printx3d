@@ -22,18 +22,11 @@ export default function ColorPicker({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex justify-between items-center">
-        <div>
-          <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider block">
-            {label}
-          </label>
-          {sublabel && (
-            <span className="text-[11px] text-[#64748B] block mt-0.5">
-              {sublabel}
-            </span>
-          )}
-        </div>
+        <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider block">
+          {label}
+        </label>
         {selectedColor && (
-          <span className="text-[11px] font-semibold text-[#059669] bg-[#059669]/10 px-2 py-0.5 rounded uppercase tracking-wider font-mono">
+          <span className="text-[11px] font-semibold text-[#059669] bg-[#059669]/10 px-2 py-0.5 rounded font-mono">
             {selectedColor.name}
           </span>
         )}

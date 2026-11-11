@@ -143,42 +143,42 @@ const STATUS_CHIPS: Record<
     bg: "bg-[#FEF08A]/30",
     text: "text-[#854D0E]",
     border: "border-[#FEF08A]",
-    label: "Pending Verification",
+    label: "Pending",
     step: 1,
   },
   CONFIRMED: {
     bg: "bg-[#E0F2FE]",
     text: "text-[#0369A1]",
     border: "border-[#BAE6FD]",
-    label: "Confirmed (Ready to Slice)",
+    label: "Confirmed",
     step: 2,
   },
   PRINTING: {
     bg: "bg-[#FEF3C7]",
     text: "text-[#B45309]",
     border: "border-[#FDE68A]",
-    label: "Printing on 3D Bed",
+    label: "Printing",
     step: 3,
   },
   PRINTED: {
     bg: "bg-[#EDE9FE]",
     text: "text-[#6D28D9]",
     border: "border-[#DDD6FE]",
-    label: "Printed & Inspected",
+    label: "Printed",
     step: 4,
   },
   SHIPPED: {
     bg: "bg-[#E0E7FF]",
     text: "text-[#4338CA]",
     border: "border-[#C7D2FE]",
-    label: "Handed to Courier",
+    label: "Shipped",
     step: 5,
   },
   DELIVERED: {
     bg: "bg-[#DCFCE7]",
     text: "text-[#15803D]",
     border: "border-[#BBF7D0]",
-    label: "Fulfilled & Delivered",
+    label: "Delivered",
     step: 6,
   },
 };
@@ -522,61 +522,50 @@ export default function AdminDashboard({
   if (!hasMounted || !isUnlocked) {
     return (
       <div suppressHydrationWarning className="min-h-screen bg-[#0F172A] text-white flex items-center justify-center p-4">
-        <div suppressHydrationWarning className="w-full max-w-md bg-[#1E293B] border border-[#334155] rounded-xl p-8 shadow-2xl text-center space-y-6">
-          <div className="w-14 h-14 rounded-2xl bg-[#059669]/10 border border-[#059669]/30 text-[#10B981] flex items-center justify-center mx-auto text-xl">
+        <div suppressHydrationWarning className="w-full max-w-sm bg-[#1E293B] border border-[#334155] rounded-xl p-8 shadow-2xl text-center space-y-5">
+          <div className="w-12 h-12 rounded-xl bg-[#059669]/10 border border-[#059669]/30 text-[#10B981] flex items-center justify-center mx-auto text-lg">
             <FontAwesomeIcon icon={faCube} />
           </div>
 
           <div>
-            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold uppercase tracking-wider bg-[#334155] text-[#94A3B8] mb-2">
-              Operator &amp; Slicer Terminal
-            </span>
-            <h1 className="text-xl font-bold text-white tracking-tight">
-              PrintX3D Admin Portal
+            <h1 className="text-lg font-bold text-white tracking-tight">
+              Admin Access
             </h1>
-            <p className="text-xs text-[#94A3B8] mt-1.5 leading-relaxed">
-              Manage filament colors, customize 3D typography &amp; sizing parameters, and oversee the real-time production flow.
+            <p className="text-xs text-[#94A3B8] mt-1">
+              Enter your PIN to continue.
             </p>
           </div>
 
           <form onSubmit={handleUnlock} className="space-y-4 text-left">
             <div>
-              <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider mb-1.5">
-                Operator Passcode
-              </label>
               <input
                 type="password"
                 maxLength={6}
                 autoFocus
-                placeholder="Enter PIN (Default: 1234)"
+                placeholder="PIN (Default: 1234)"
                 value={pinInput}
                 onChange={(e) => {
                   setPinInput(e.target.value);
                   setPinError("");
                 }}
-                className="w-full h-11 px-3.5 bg-[#0F172A] border border-[#475569] rounded-lg text-white font-mono text-center tracking-[0.3em] text-lg focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all"
+                className="w-full h-11 px-3.5 bg-[#0F172A] border border-[#475569] rounded-lg text-white font-mono text-center tracking-[0.3em] text-base focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all"
               />
             </div>
 
             {pinError && (
-              <p className="text-xs text-rose-400 bg-rose-950/40 border border-rose-800/40 p-2.5 rounded-lg text-center font-mono">
+              <p className="text-xs text-rose-400 bg-rose-950/40 border border-rose-800/40 p-2 rounded-lg text-center font-mono">
                 {pinError}
               </p>
             )}
 
             <button
               type="submit"
-              className="w-full h-11 bg-[#059669] hover:bg-[#047857] text-white font-semibold rounded-lg text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-10 bg-[#059669] hover:bg-[#047857] text-white font-semibold rounded-lg text-xs transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Unlock Admin Station</span>
+              <span>Unlock</span>
               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
             </button>
           </form>
-
-          <div className="pt-2 text-[11px] text-[#64748B] flex items-center justify-between border-t border-[#334155]/60">
-            <span>Bambu • Prusa • Cura • Orca</span>
-            <span className="font-mono">PIN: 1234</span>
-          </div>
         </div>
       </div>
     );
@@ -588,32 +577,22 @@ export default function AdminDashboard({
   return (
     <div suppressHydrationWarning className="min-h-screen bg-[#F8FAFC] text-[#0F172A] pb-16">
       {/* ── Top Header ── */}
-      <header className="bg-white border-b border-[#E2E8F0] px-4 sm:px-6 py-3.5 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#0F172A] flex items-center justify-center text-white font-bold text-sm shadow-xs">
+      <header className="bg-white border-b border-[#E2E8F0] px-4 sm:px-6 py-3 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#0F172A] flex items-center justify-center text-white font-bold text-xs shadow-xs">
               P
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-[#0F172A] tracking-tight">
-                  PrintX3D Control &amp; Fabrication Portal
-                </h1>
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]">
-                  LIVE PRODUCTION
-                </span>
-              </div>
-              <p className="text-xs text-[#64748B]">
-                Order Flow Pipeline • Filament Inventory • 3D Typographic Sizing
-              </p>
-            </div>
+            <h1 className="text-sm font-bold text-[#0F172A] tracking-tight">
+              PrintX3D Admin
+            </h1>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.location.reload()}
-              title="Refresh console"
-              className="h-8 px-3 rounded-lg text-xs font-semibold text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC] transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Refresh"
+              className="h-8 px-2.5 rounded-lg text-xs font-semibold text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC] transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faRotate} className="text-xs" />
               <span className="hidden sm:inline">Refresh</span>
@@ -621,7 +600,7 @@ export default function AdminDashboard({
 
             <button
               onClick={handleLock}
-              className="h-8 px-3 rounded-lg text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer"
+              className="h-8 px-2.5 rounded-lg text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faLock} className="text-xs" />
               <span>Lock</span>
@@ -630,17 +609,17 @@ export default function AdminDashboard({
         </div>
 
         {/* ── Primary Navigation Tabs ── */}
-        <div className="max-w-7xl mx-auto mt-3 border-t border-slate-100 pt-2 flex items-center gap-1 overflow-x-auto">
+        <div className="max-w-7xl mx-auto mt-2.5 border-t border-slate-100 pt-2 flex items-center gap-1 overflow-x-auto">
           <button
             onClick={() => setActiveTab("orders")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "orders"
                 ? "bg-[#0F172A] text-white shadow-xs"
                 : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faBox} className="text-xs" />
-            <span>Order Flow Pipeline</span>
+            <span>Orders</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
                 activeTab === "orders" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
@@ -652,14 +631,14 @@ export default function AdminDashboard({
 
           <button
             onClick={() => setActiveTab("filaments")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "filaments"
                 ? "bg-[#0F172A] text-white shadow-xs"
                 : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faPalette} className="text-xs" />
-            <span>Filament Spools &amp; Colors</span>
+            <span>Filaments</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
                 activeTab === "filaments" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
@@ -671,26 +650,26 @@ export default function AdminDashboard({
 
           <button
             onClick={() => setActiveTab("settings")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "settings"
                 ? "bg-[#0F172A] text-white shadow-xs"
                 : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faSliders} className="text-xs" />
-            <span>Typography, Sizing &amp; 3D Parameters</span>
+            <span>3D Settings</span>
           </button>
 
           <button
             onClick={() => setActiveTab("preview")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "preview"
                 ? "bg-[#059669] text-white shadow-xs"
                 : "text-[#059669] hover:bg-emerald-50"
             }`}
           >
             <FontAwesomeIcon icon={faEye} className="text-xs" />
-            <span>Live 3D Test Bench</span>
+            <span>Preview</span>
           </button>
         </div>
       </header>
@@ -736,7 +715,7 @@ export default function AdminDashboard({
               <div className="relative w-full sm:w-80">
                 <input
                   type="text"
-                  placeholder="Search by order ID, phone, name, or text…"
+                  placeholder="Search orders…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full h-9 pl-9 pr-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#0F172A] transition-all"
@@ -864,12 +843,10 @@ export default function AdminDashboard({
 
                       {/* Visual Order Flow Stage Progress Bar */}
                       <div className="bg-[#F8FAFC] border border-[#E2E8F0]/80 rounded-lg p-3">
-                        <div className="flex items-center justify-between text-[11px] font-semibold text-[#64748B] mb-2">
-                          <span className="uppercase tracking-wider text-[10px]">
-                            Live Production Flow:
-                          </span>
-                          <span className="font-mono text-[#0F172A] font-bold">
-                            Stage {currentStep} of {ORDER_FLOW_STAGES.length}: {chip.label}
+                        <div className="flex items-center justify-between text-[11px] mb-2">
+                          <span className="font-semibold text-[#0F172A]">{chip.label}</span>
+                          <span className="font-mono text-[#64748B]">
+                            Step {currentStep} of {ORDER_FLOW_STAGES.length}
                           </span>
                         </div>
 
@@ -930,7 +907,7 @@ export default function AdminDashboard({
                                   "{item.customText}"
                                 </div>
                                 <div className="text-xs text-[#64748B] font-mono mt-0.5">
-                                  Typeface: {item.fontStyle || "helvetiker_bold"}
+                                  {item.fontStyle || "helvetiker_bold"}
                                 </div>
                               </div>
 
@@ -948,7 +925,7 @@ export default function AdminDashboard({
                                     </span>
                                   </div>
 
-                                  <span className="text-slate-400">on</span>
+                                  <span className="text-slate-400">/</span>
 
                                   {/* Baseplate color badge */}
                                   <div className="flex items-center gap-1.5">
@@ -976,7 +953,7 @@ export default function AdminDashboard({
                                   ) : (
                                     <>
                                       <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
-                                      <span>Get STL</span>
+                                      <span>STL</span>
                                     </>
                                   )}
                                 </button>
@@ -999,7 +976,7 @@ export default function AdminDashboard({
                             className="h-8 px-3 rounded-lg border border-[#CBD5E1] text-[#0F172A] hover:bg-[#F8FAFC] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
                           >
                             <FontAwesomeIcon icon={faPrint} className="text-xs" />
-                            <span>Print Slicer Ticket</span>
+                            <span>Ticket</span>
                           </button>
 
                           {order.status !== "DELIVERED" && (
@@ -1008,7 +985,7 @@ export default function AdminDashboard({
                               onClick={() => advanceOrderStage(order)}
                               className="h-8 px-3.5 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all disabled:opacity-50"
                             >
-                              <span>Next Stage</span>
+                              <span>Advance</span>
                               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
                             </button>
                           )}
@@ -1030,11 +1007,11 @@ export default function AdminDashboard({
             {/* Header with Add Button */}
             <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-bold text-[#0F172A]">
-                  Filament Spool Inventory &amp; Color Palette
+                <h2 className="text-sm font-bold text-[#0F172A]">
+                  Filaments
                 </h2>
-                <p className="text-xs text-[#64748B] mt-0.5">
-                  Enable, disable, or add custom filament colors. Out-of-stock filaments automatically hide from the customer customizer in real time.
+                <p className="text-xs text-[#64748B]">
+                  Manage colors and stock status.
                 </p>
               </div>
 
@@ -1043,7 +1020,7 @@ export default function AdminDashboard({
                 className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faPlus} className="text-xs" />
-                <span>Add New Filament Color</span>
+                <span>Add Color</span>
               </button>
             </div>
 
@@ -1144,11 +1121,11 @@ export default function AdminDashboard({
               {/* 3D Sizing & Geometry Parameters Card */}
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
                 <div>
-                  <h2 className="text-base font-bold text-[#0F172A]">
-                    Physical 3D Print Sizing &amp; Geometry Multipliers
+                  <h2 className="text-sm font-bold text-[#0F172A]">
+                    3D Geometry
                   </h2>
-                  <p className="text-xs text-[#64748B] mt-0.5">
-                    Adjust font size, layer extrusion heights, baseplate contour radius, and keychain hole dimensions.
+                  <p className="text-xs text-[#64748B]">
+                    Extrusions, scaling, and keychain hole dimensions.
                   </p>
                 </div>
 
@@ -1158,7 +1135,7 @@ export default function AdminDashboard({
                     <div className="flex justify-between items-center text-xs">
                       <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
                         <FontAwesomeIcon icon={faFont} className="text-[#059669]" />
-                        <span>Font Size Multiplier</span>
+                        <span>Font Scale</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{fontSize.toFixed(2)}x</span>
                     </div>
@@ -1171,8 +1148,8 @@ export default function AdminDashboard({
                       onChange={(e) => setFontSize(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Scale of the vector text glyphs (Default: 1.20).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 1.20x
                     </p>
                   </div>
 
@@ -1181,7 +1158,7 @@ export default function AdminDashboard({
                     <div className="flex justify-between items-center text-xs">
                       <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
                         <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
-                        <span>Text Emboss Depth</span>
+                        <span>Text Depth</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(textDepth * 10).toFixed(1)} mm</span>
                     </div>
@@ -1194,8 +1171,8 @@ export default function AdminDashboard({
                       onChange={(e) => setTextDepth(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Height of the extruded foreground text (Default: 1.8mm).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 1.8 mm
                     </p>
                   </div>
 
@@ -1204,7 +1181,7 @@ export default function AdminDashboard({
                     <div className="flex justify-between items-center text-xs">
                       <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
                         <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
-                        <span>Baseplate Depth</span>
+                        <span>Base Depth</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(baseDepth * 10).toFixed(1)} mm</span>
                     </div>
@@ -1217,8 +1194,8 @@ export default function AdminDashboard({
                       onChange={(e) => setBaseDepth(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Thickness of the rear structural baseplate (Default: 2.0mm).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 2.0 mm
                     </p>
                   </div>
 
@@ -1227,7 +1204,7 @@ export default function AdminDashboard({
                     <div className="flex justify-between items-center text-xs">
                       <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
                         <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
-                        <span>Contour Margin (R)</span>
+                        <span>Contour Margin</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(offsetRadius * 10).toFixed(1)} mm</span>
                     </div>
@@ -1240,8 +1217,8 @@ export default function AdminDashboard({
                       onChange={(e) => setOffsetRadius(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Offset distance around the letter perimeter (Default: 1.8mm).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 1.8 mm
                     </p>
                   </div>
 
@@ -1250,7 +1227,7 @@ export default function AdminDashboard({
                     <div className="flex justify-between items-center text-xs">
                       <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
                         <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
-                        <span>Keyring Eyelet Radius</span>
+                        <span>Eyelet Radius</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(earRadius * 10).toFixed(1)} mm</span>
                     </div>
@@ -1263,8 +1240,8 @@ export default function AdminDashboard({
                       onChange={(e) => setEarRadius(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Outer radius of the keychain attachment loop (Default: 2.2mm).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 2.2 mm
                     </p>
                   </div>
 
@@ -1286,8 +1263,8 @@ export default function AdminDashboard({
                       onChange={(e) => setHoleRadius(parseFloat(e.target.value))}
                       className="w-full accent-[#059669] cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#64748B]">
-                      Diameter of the hole for split keyring (Default: 2.0mm).
+                    <p className="text-[11px] text-[#94A3B8]">
+                      Default: 2.0 mm
                     </p>
                   </div>
                 </div>
@@ -1296,11 +1273,11 @@ export default function AdminDashboard({
               {/* Pricing & Typography Catalog */}
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
                 <div>
-                  <h2 className="text-base font-bold text-[#0F172A]">
-                    Pricing &amp; Default Typographic Style
+                  <h2 className="text-sm font-bold text-[#0F172A]">
+                    Pricing &amp; Typography
                   </h2>
-                  <p className="text-xs text-[#64748B] mt-0.5">
-                    Set the base customizer product price and the default 3D typeface.
+                  <p className="text-xs text-[#64748B]">
+                    Base price and default font style.
                   </p>
                 </div>
 
@@ -1308,7 +1285,7 @@ export default function AdminDashboard({
                   {/* Base Price */}
                   <div>
                     <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
-                      Base Product Price (৳ / $)
+                      Base Price (৳)
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-2.5 text-sm font-bold text-slate-500 font-mono">
@@ -1328,7 +1305,7 @@ export default function AdminDashboard({
                   {/* Default Font Style */}
                   <div>
                     <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
-                      Default Store Typography
+                      Default Font
                     </label>
                     <select
                       value={defaultFont}
@@ -1347,7 +1324,7 @@ export default function AdminDashboard({
                 {/* Available 3D Font Styles Grid */}
                 <div className="space-y-3 pt-4 border-t border-slate-100">
                   <h3 className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
-                    Available 3D Typography Styles
+                    Available Fonts
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                     {FONT_STYLE_OPTIONS.map((f) => (
@@ -1377,12 +1354,12 @@ export default function AdminDashboard({
                   {settingsSaving ? (
                     <>
                       <FontAwesomeIcon icon={faRotate} className="animate-spin text-xs" />
-                      <span>Saving Parameters…</span>
+                      <span>Saving…</span>
                     </>
                   ) : (
                     <>
                       <FontAwesomeIcon icon={faCheck} className="text-xs" />
-                      <span>Save 3D Parameters &amp; Pricing</span>
+                      <span>Save Settings</span>
                     </>
                   )}
                 </button>
@@ -1398,11 +1375,11 @@ export default function AdminDashboard({
           <div className="space-y-6">
             <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-bold text-[#0F172A]">
-                  Operator 3D Vector Contour Test Bench
+                <h2 className="text-sm font-bold text-[#0F172A]">
+                  3D Preview
                 </h2>
-                <p className="text-xs text-[#64748B] mt-0.5">
-                  Test custom text, new filament colors, and typography in the live Three.js CAD renderer before customers place orders.
+                <p className="text-xs text-[#64748B]">
+                  Test custom text, colors, and typography.
                 </p>
               </div>
             </div>
@@ -1412,7 +1389,7 @@ export default function AdminDashboard({
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
-                    Test Word / Lettering
+                    Text
                   </label>
                   <input
                     type="text"
@@ -1425,7 +1402,7 @@ export default function AdminDashboard({
 
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
-                    Typographic Style
+                    Font
                   </label>
                   <select
                     value={testFontStyle}
@@ -1442,7 +1419,7 @@ export default function AdminDashboard({
 
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
-                    Lettering Color (Top Layer)
+                    Text Color
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {colors
@@ -1466,7 +1443,7 @@ export default function AdminDashboard({
 
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
-                    Baseplate Color (Bottom Layer)
+                    Base Color
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {colors
@@ -1489,7 +1466,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#0F172A]">Keyring Loop Socket</span>
+                  <span className="text-xs font-bold text-[#0F172A]">Keyring Loop</span>
                   <input
                     type="checkbox"
                     checked={testKeychainLoop}
@@ -1523,7 +1500,7 @@ export default function AdminDashboard({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
                 <FontAwesomeIcon icon={faPalette} className="text-emerald-600" />
-                <span>Add New Filament to Inventory</span>
+                <span>Add Filament</span>
               </h3>
               <button
                 onClick={() => setIsAddColorModalOpen(false)}
@@ -1536,12 +1513,12 @@ export default function AdminDashboard({
             <form onSubmit={handleCreateColor} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                  Color / Spool Name
+                  Name
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Emerald Silk Green"
+                  placeholder="e.g. Silk Green"
                   value={newColorName}
                   onChange={(e) => setNewColorName(e.target.value)}
                   className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
@@ -1551,7 +1528,7 @@ export default function AdminDashboard({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                    Hex Color Code
+                    Hex
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -1572,16 +1549,16 @@ export default function AdminDashboard({
 
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                    Material Type
+                    Material
                   </label>
                   <select
                     value={newColorMaterial}
                     onChange={(e) => setNewColorMaterial(e.target.value as any)}
                     className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
                   >
-                    <option value="PLA">PLA (Standard)</option>
-                    <option value="PETG">PETG (Durable)</option>
-                    <option value="TPU">TPU (Flexible)</option>
+                    <option value="PLA">PLA</option>
+                    <option value="PETG">PETG</option>
+                    <option value="TPU">TPU</option>
                   </select>
                 </div>
               </div>
@@ -1589,7 +1566,7 @@ export default function AdminDashboard({
               {/* Quick Preset Colors Palette */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
-                  Quick Palette Suggestions:
+                  Presets:
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -1624,7 +1601,7 @@ export default function AdminDashboard({
                   className="w-4 h-4 accent-slate-900 cursor-pointer"
                 />
                 <label htmlFor="inStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
-                  Available in stock immediately
+                  In stock
                 </label>
               </div>
 
@@ -1641,7 +1618,7 @@ export default function AdminDashboard({
                   disabled={filamentActionLoading}
                   className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
                 >
-                  {filamentActionLoading ? "Adding Spool…" : "Add to Spool Rack"}
+                  {filamentActionLoading ? "Adding…" : "Add Filament"}
                 </button>
               </div>
             </form>
@@ -1658,7 +1635,7 @@ export default function AdminDashboard({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
                 <FontAwesomeIcon icon={faPenToSquare} className="text-slate-800" />
-                <span>Edit Filament Spool</span>
+                <span>Edit Filament</span>
               </h3>
               <button
                 onClick={() => setEditingColor(null)}
@@ -1671,7 +1648,7 @@ export default function AdminDashboard({
             <form onSubmit={handleUpdateColor} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                  Filament Name
+                  Name
                 </label>
                 <input
                   type="text"
@@ -1687,7 +1664,7 @@ export default function AdminDashboard({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                    Hex Code
+                    Hex
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -1718,7 +1695,7 @@ export default function AdminDashboard({
 
                 <div>
                   <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
-                    Material Type
+                    Material
                   </label>
                   <select
                     value={editingColor.materialType}
@@ -1730,9 +1707,9 @@ export default function AdminDashboard({
                     }
                     className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
                   >
-                    <option value="PLA">PLA (Standard)</option>
-                    <option value="PETG">PETG (Durable)</option>
-                    <option value="TPU">TPU (Flexible)</option>
+                    <option value="PLA">PLA</option>
+                    <option value="PETG">PETG</option>
+                    <option value="TPU">TPU</option>
                   </select>
                 </div>
               </div>
@@ -1748,7 +1725,7 @@ export default function AdminDashboard({
                   className="w-4 h-4 accent-slate-900 cursor-pointer"
                 />
                 <label htmlFor="editInStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
-                  In Stock &amp; Visible in Customer Customizer
+                  In stock
                 </label>
               </div>
 
@@ -1765,7 +1742,7 @@ export default function AdminDashboard({
                   disabled={filamentActionLoading}
                   className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
                 >
-                  {filamentActionLoading ? "Saving…" : "Update Spool"}
+                  {filamentActionLoading ? "Saving…" : "Save"}
                 </button>
               </div>
             </form>
@@ -1783,10 +1760,10 @@ export default function AdminDashboard({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
-                  FABRICATION TRAVELER
+                  JOB TICKET
                 </span>
                 <h3 className="text-base font-bold text-[#0F172A] mt-1">
-                  Job Ticket: PX-{selectedTicketOrder.id.slice(0, 8).toUpperCase()}
+                  PX-{selectedTicketOrder.id.slice(0, 8).toUpperCase()}
                 </h3>
               </div>
               <button
@@ -1810,25 +1787,25 @@ export default function AdminDashboard({
                 </span>
               </div>
               <div className="flex justify-between border-b border-slate-200 pb-2">
-                <span className="text-slate-500">Current Status:</span>
+                <span className="text-slate-500">Status:</span>
                 <span className="font-bold text-emerald-700 uppercase">
                   {selectedTicketOrder.status}
                 </span>
               </div>
               <div className="flex justify-between border-b border-slate-200 pb-2">
-                <span className="text-slate-500">Nozzle / Slicer:</span>
-                <span className="font-bold text-[#0F172A]">0.4mm • 0.20mm Standard Layer</span>
+                <span className="text-slate-500">Layer:</span>
+                <span className="font-bold text-[#0F172A]">0.20mm Standard</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Bed Temp:</span>
-                <span className="font-bold text-[#0F172A]">60°C Textured PEI Sheet</span>
+                <span className="text-slate-500">Bed:</span>
+                <span className="font-bold text-[#0F172A]">60°C Textured PEI</span>
               </div>
             </div>
 
             {/* Items in Job */}
             <div className="space-y-2">
               <span className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
-                Print Items ({selectedTicketOrder.orderItems.length})
+                Items ({selectedTicketOrder.orderItems.length})
               </span>
               {selectedTicketOrder.orderItems.map((item, i) => (
                 <div
@@ -1840,7 +1817,7 @@ export default function AdminDashboard({
                     <span className="font-mono text-slate-500">Qty: {item.quantity}</span>
                   </div>
                   <div className="flex items-center gap-4 text-[11px] text-[#64748B]">
-                    <span>Top Layer: <strong className="text-slate-900">{item.color.name}</strong></span>
+                    <span>Top: <strong className="text-slate-900">{item.color.name}</strong></span>
                     <span>Base: <strong className="text-slate-900">{item.baseColor?.name || "Matte Black"}</strong></span>
                   </div>
                 </div>
@@ -1862,7 +1839,7 @@ export default function AdminDashboard({
                 className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faPrint} className="text-xs" />
-                <span>Print Physical Sheet</span>
+                <span>Print Ticket</span>
               </button>
             </div>
           </div>
