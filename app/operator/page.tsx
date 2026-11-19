@@ -28,6 +28,6 @@ export default async function OperatorPage() {
     })),
   }));
 
-  return <AdminDashboard orders={serialized} />;
+  return <AdminDashboard orders={serialized} role="staff" />;
 }
 

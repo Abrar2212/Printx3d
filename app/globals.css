@@ -4,8 +4,15 @@
   --font-heading: "Lato", var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sans: "Lato", var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-mono), "Fira Code", monospace;
+}
 
-  /* Verdana Health Color Palette */
+/* Verdana Health Color Palette. @theme also emits these as :root variables and
+   generates utilities from them: bg-primary-navy, text-muted, border-border, ... */
+@theme {
+  /* PrintX3D logo (public/images/logo.png): ink and its background */
+  --color-brand: #B53F3F;
+  --color-brand-tint: #F9EDED;
+
   --color-primary-navy: #0F172A;
   --color-secondary-slate: #64748B;
   --color-tertiary-sage: #059669;
@@ -15,8 +22,13 @@
   --color-border-subtle: #CBD5E1;
   --color-success: #22C55E;
   --color-warning: #EAB308;
+  --color-warning-ink: #854D0E; /* warning text on light backgrounds; #EAB308 fails contrast there */
   --color-error: #EF4444;
+  --color-error-ink: #B91C1C; /* error text on light backgrounds; #EF4444 is 3.8:1 there */
   --color-info: #0EA5E9;
+  --color-muted: #94A3B8;
+  --color-primary-navy-hover: #020617;
+  --color-surface-muted: #F1F5F9;
 }
 
 body {

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
+import Logo from "@/components/Logo";
+import { lineLimit } from "@/lib/keychain-text";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPrint,
@@ -38,7 +40,7 @@ import { FONT_STYLE_OPTIONS } from "@/types";
 const StudioCanvas = dynamic(() => import("@/components/3d/StudioCanvas"), {
   ssr: false,
   loading: () => (
-    <div className="h-64 sm:h-80 bg-[#0F172A] rounded-xl flex items-center justify-center text-slate-400 text-sm font-mono border border-slate-800">
+    <div className="h-64 sm:h-80 bg-primary-navy rounded-xl flex items-center justify-center text-slate-400 text-sm font-mono border border-slate-800">
       <div className="flex items-center gap-2">
         <FontAwesomeIcon icon={faRotate} className="animate-spin text-emerald-400" />
         <span>Initializing 3D Vector Engine…</span>
@@ -129,11 +131,10 @@ export interface StyleItem {
 
 interface Props {
   orders: Order[];
+  role: "admin" | "staff"; // staff (reception) sees only the order queue
   initialColors?: FilamentItem[];
   initialStyles?: StyleItem[];
 }
-
-const DEFAULT_PIN = "1234";
 
 const STATUS_CHIPS: Record<
   OrderStatus,
@@ -194,6 +195,7 @@ const ORDER_FLOW_STAGES: OrderStatus[] = [
 
 export default function AdminDashboard({
   orders: initialOrders,
+  role,
   initialColors = [],
   initialStyles = [],
 }: Props) {
@@ -232,6 +234,7 @@ export default function AdminDashboard({
   const [offsetRadius, setOffsetRadius] = useState<number>(Number(initialConfig.offsetRadius ?? 0.18));
   const [earRadius, setEarRadius] = useState<number>(Number(initialConfig.earRadius ?? 0.22));
   const [holeRadius, setHoleRadius] = useState<number>(Number(initialConfig.holeRadius ?? 0.10));
+  const [maxLines, setMaxLines] = useState<number>(lineLimit(initialConfig));
   const [basePrice, setBasePrice] = useState<number>(Number(keychainStyle?.basePrice ?? 5.99));
   const [defaultFont, setDefaultFont] = useState<string>(keychainStyle?.fontFamily || "helvetiker_bold");
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -244,47 +247,21 @@ export default function AdminDashboard({
   const [testFontStyle, setTestFontStyle] = useState("helvetiker_bold");
   const [testKeychainLoop, setTestKeychainLoop] = useState(true);
 
-  // Operator PIN Gate State
+  // Access is enforced on the server by proxy.ts; this only decides what to show.
+  const isAdmin = role === "admin";
   const [hasMounted, setHasMounted] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     setHasMounted(true);
-    if (typeof window !== "undefined") {
-      const stored = sessionStorage.getItem("printx3d_operator_token");
-      if (stored === "unlocked") {
-        setIsUnlocked(true);
-      }
-      // Check query param for tab
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabParam = urlParams.get("tab");
-      if (tabParam === "filaments" || tabParam === "settings" || tabParam === "preview") {
-        setActiveTab(tabParam as any);
-      }
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    if (isAdmin && (tabParam === "filaments" || tabParam === "settings" || tabParam === "preview")) {
+      setActiveTab(tabParam);
     }
-  }, []);
+  }, [isAdmin]);
 
-  const handleUnlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pinInput.trim() === DEFAULT_PIN) {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("printx3d_operator_token", "unlocked");
-      }
-      setIsUnlocked(true);
-      setPinError("");
-    } else {
-      setPinError("Invalid Operator PIN. Please verify credentials.");
-    }
-  };
-
-  const handleLock = () => {
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("printx3d_operator_token");
-    }
-    setIsUnlocked(false);
-    setPinInput("");
+  const handleLogout = async () => {
+    await fetch("/api/auth", { method: "DELETE" }).catch(() => {});
+    window.location.href = "/login";
   };
 
   // Status Counts
@@ -497,6 +474,7 @@ export default function AdminDashboard({
             offsetRadius: Number(offsetRadius),
             earRadius: Number(earRadius),
             holeRadius: Number(holeRadius),
+            maxLines,
           },
         }),
       });
@@ -516,75 +494,21 @@ export default function AdminDashboard({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // OPERATOR PASSCODE GATE
-  // ─────────────────────────────────────────────────────────────
-  if (!hasMounted || !isUnlocked) {
-    return (
-      <div suppressHydrationWarning className="min-h-screen bg-[#0F172A] text-white flex items-center justify-center p-4">
-        <div suppressHydrationWarning className="w-full max-w-sm bg-[#1E293B] border border-[#334155] rounded-xl p-8 shadow-2xl text-center space-y-5">
-          <div className="w-12 h-12 rounded-xl bg-[#059669]/10 border border-[#059669]/30 text-[#10B981] flex items-center justify-center mx-auto text-lg">
-            <FontAwesomeIcon icon={faCube} />
-          </div>
-
-          <div>
-            <h1 className="text-lg font-bold text-white tracking-tight">
-              Admin Access
-            </h1>
-            <p className="text-xs text-[#94A3B8] mt-1">
-              Enter your PIN to continue.
-            </p>
-          </div>
-
-          <form onSubmit={handleUnlock} className="space-y-4 text-left">
-            <div>
-              <input
-                type="password"
-                maxLength={6}
-                autoFocus
-                placeholder="PIN (Default: 1234)"
-                value={pinInput}
-                onChange={(e) => {
-                  setPinInput(e.target.value);
-                  setPinError("");
-                }}
-                className="w-full h-11 px-3.5 bg-[#0F172A] border border-[#475569] rounded-lg text-white font-mono text-center tracking-[0.3em] text-base focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all"
-              />
-            </div>
-
-            {pinError && (
-              <p className="text-xs text-rose-400 bg-rose-950/40 border border-rose-800/40 p-2 rounded-lg text-center font-mono">
-                {pinError}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full h-10 bg-[#059669] hover:bg-[#047857] text-white font-semibold rounded-lg text-xs transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>Unlock</span>
-              <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  // Client-only render, as before the login change (avoids hydration mismatches in dates etc.)
+  if (!hasMounted) return null;
 
   // ─────────────────────────────────────────────────────────────
-  // UNLOCKED ADMIN & WORKSHOP PORTAL
+  // ADMIN & WORKSHOP PORTAL
   // ─────────────────────────────────────────────────────────────
   return (
-    <div suppressHydrationWarning className="min-h-screen bg-[#F8FAFC] text-[#0F172A] pb-16">
+    <div suppressHydrationWarning className="min-h-screen bg-bg text-primary-navy pb-16">
       {/* ── Top Header ── */}
-      <header className="bg-white border-b border-[#E2E8F0] px-4 sm:px-6 py-3 sticky top-0 z-30 shadow-xs">
+      <header className="bg-white border-b border-border px-4 sm:px-6 py-3 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#0F172A] flex items-center justify-center text-white font-bold text-xs shadow-xs">
-              P
-            </div>
-            <h1 className="text-sm font-bold text-[#0F172A] tracking-tight">
-              PrintX3D Admin
+            <Logo className="w-24" href={isAdmin ? "/admin" : "/operator"} />
+            <h1 className="text-sm font-semibold text-secondary-slate border-l border-border pl-2.5">
+              {isAdmin ? "Admin" : "Reception"}
             </h1>
           </div>
 
@@ -592,18 +516,18 @@ export default function AdminDashboard({
             <button
               onClick={() => window.location.reload()}
               title="Refresh"
-              className="h-8 px-2.5 rounded-lg text-xs font-semibold text-[#475569] border border-[#E2E8F0] hover:bg-[#F8FAFC] transition-all flex items-center gap-1.5 cursor-pointer"
+              className="h-8 px-2.5 rounded-lg text-xs font-semibold text-[#475569] border border-border hover:bg-bg transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faRotate} className="text-xs" />
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
             <button
-              onClick={handleLock}
+              onClick={handleLogout}
               className="h-8 px-2.5 rounded-lg text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <FontAwesomeIcon icon={faLock} className="text-xs" />
-              <span>Lock</span>
+              <span>Sign out</span>
             </button>
           </div>
         </div>
@@ -614,8 +538,8 @@ export default function AdminDashboard({
             onClick={() => setActiveTab("orders")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "orders"
-                ? "bg-[#0F172A] text-white shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+                ? "bg-primary-navy text-white shadow-xs"
+                : "text-secondary-slate hover:text-primary-navy hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faBox} className="text-xs" />
@@ -629,12 +553,13 @@ export default function AdminDashboard({
             </span>
           </button>
 
+          {isAdmin && (<>
           <button
             onClick={() => setActiveTab("filaments")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "filaments"
-                ? "bg-[#0F172A] text-white shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+                ? "bg-primary-navy text-white shadow-xs"
+                : "text-secondary-slate hover:text-primary-navy hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faPalette} className="text-xs" />
@@ -652,8 +577,8 @@ export default function AdminDashboard({
             onClick={() => setActiveTab("settings")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "settings"
-                ? "bg-[#0F172A] text-white shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-100"
+                ? "bg-primary-navy text-white shadow-xs"
+                : "text-secondary-slate hover:text-primary-navy hover:bg-slate-100"
             }`}
           >
             <FontAwesomeIcon icon={faSliders} className="text-xs" />
@@ -664,13 +589,14 @@ export default function AdminDashboard({
             onClick={() => setActiveTab("preview")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "preview"
-                ? "bg-[#059669] text-white shadow-xs"
-                : "text-[#059669] hover:bg-emerald-50"
+                ? "bg-tertiary-sage text-white shadow-xs"
+                : "text-tertiary-sage hover:bg-emerald-50"
             }`}
           >
             <FontAwesomeIcon icon={faEye} className="text-xs" />
             <span>Preview</span>
           </button>
+          </>)}
         </div>
       </header>
 
@@ -691,11 +617,11 @@ export default function AdminDashboard({
                     onClick={() => setFilter(filter === s ? "ALL" : s)}
                     className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                       isSelected
-                        ? "bg-white border-[#0F172A] ring-2 ring-[#0F172A]/15 shadow-sm"
-                        : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1] shadow-xs"
+                        ? "bg-white border-primary-navy ring-2 ring-primary-navy/15 shadow-sm"
+                        : "bg-white border-border hover:border-border-subtle shadow-xs"
                     }`}
                   >
-                    <div className="text-xl font-bold font-mono text-[#0F172A]">
+                    <div className="text-xl font-bold font-mono text-primary-navy">
                       {counts[s] ?? 0}
                     </div>
                     <div className="mt-1">
@@ -711,30 +637,30 @@ export default function AdminDashboard({
             </div>
 
             {/* Search & Filter Controls */}
-            <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="bg-white border border-border rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="relative w-full sm:w-80">
                 <input
                   type="text"
                   placeholder="Search orders…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-9 pl-9 pr-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#0F172A] transition-all"
+                  className="w-full h-9 pl-9 pr-4 bg-bg border border-border rounded-lg text-xs text-primary-navy placeholder-muted focus:outline-none focus:border-primary-navy transition-all"
                 />
                 <FontAwesomeIcon
                   icon={faMagnifyingGlass}
-                  className="absolute left-3 top-2.5 text-xs text-[#94A3B8]"
+                  className="absolute left-3 top-2.5 text-xs text-muted"
                 />
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <span className="text-xs text-[#64748B]">Showing:</span>
-                <span className="text-xs font-bold text-[#0F172A] font-mono">
+                <span className="text-xs text-secondary-slate">Showing:</span>
+                <span className="text-xs font-bold text-primary-navy font-mono">
                   {filteredOrders.length} {filteredOrders.length === 1 ? "Job" : "Jobs"}
                 </span>
                 {filter !== "ALL" && (
                   <button
                     onClick={() => setFilter("ALL")}
-                    className="text-xs text-[#059669] hover:underline font-semibold ml-2 cursor-pointer"
+                    className="text-xs text-tertiary-sage hover:underline font-semibold ml-2 cursor-pointer"
                   >
                     Clear Filter
                   </button>
@@ -744,12 +670,12 @@ export default function AdminDashboard({
 
             {/* Order Flow Pipeline List */}
             {filteredOrders.length === 0 ? (
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-12 text-center shadow-xs">
-                <div className="w-12 h-12 rounded-full bg-[#F1F5F9] text-[#94A3B8] flex items-center justify-center mx-auto text-lg mb-3">
+              <div className="bg-white border border-border rounded-xl p-12 text-center shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-surface-muted text-muted flex items-center justify-center mx-auto text-lg mb-3">
                   <FontAwesomeIcon icon={faBox} />
                 </div>
-                <h3 className="text-sm font-bold text-[#0F172A]">No orders found</h3>
-                <p className="text-xs text-[#64748B] mt-1">
+                <h3 className="text-sm font-bold text-primary-navy">No orders found</h3>
+                <p className="text-xs text-secondary-slate mt-1">
                   {filter !== "ALL"
                     ? `No orders matching filter "${filter}"`
                     : "No print orders in the queue."}
@@ -764,28 +690,28 @@ export default function AdminDashboard({
                   return (
                     <div
                       key={order.id}
-                      className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs hover:border-[#CBD5E1] transition-all space-y-4"
+                      className="bg-white border border-border rounded-xl p-5 shadow-xs hover:border-border-subtle transition-all space-y-4"
                     >
                       {/* Top Row: Customer & Order ID */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-muted pb-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono font-bold bg-[#0F172A] text-white px-2.5 py-1 rounded">
+                          <span className="text-xs font-mono font-bold bg-primary-navy text-white px-2.5 py-1 rounded">
                             PX-{order.id.slice(0, 8).toUpperCase()}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-[#0F172A]">
+                              <span className="text-sm font-bold text-primary-navy">
                                 {order.customerName}
                               </span>
-                              <span className="text-xs text-[#64748B] font-mono">
+                              <span className="text-xs text-secondary-slate font-mono">
                                 • {new Date(order.createdAt).toLocaleDateString()}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-[#64748B] mt-0.5">
+                            <div className="flex items-center gap-3 text-xs text-secondary-slate mt-0.5">
                               {order.customerPhone && (
                                 <a
                                   href={`tel:${order.customerPhone}`}
-                                  className="hover:text-[#0F172A] flex items-center gap-1"
+                                  className="hover:text-primary-navy flex items-center gap-1"
                                 >
                                   <FontAwesomeIcon icon={faPhone} className="text-[10px]" />
                                   <span>{order.customerPhone}</span>
@@ -801,7 +727,7 @@ export default function AdminDashboard({
                                   ).toUpperCase()}:`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[#059669] hover:underline flex items-center gap-1 font-semibold"
+                                  className="text-tertiary-sage hover:underline flex items-center gap-1 font-semibold"
                                 >
                                   <FontAwesomeIcon icon={faWhatsapp} className="text-xs" />
                                   <span>WhatsApp</span>
@@ -814,10 +740,10 @@ export default function AdminDashboard({
                         {/* Order Total & Status Selector */}
                         <div className="flex items-center gap-3">
                           <div className="text-right">
-                            <span className="text-sm font-bold font-mono text-[#0F172A]">
+                            <span className="text-sm font-bold font-mono text-primary-navy">
                               ৳{order.totalPrice.toFixed(2)}
                             </span>
-                            <div className="text-[10px] text-[#64748B] uppercase font-mono">
+                            <div className="text-[10px] text-secondary-slate uppercase font-mono">
                               {order.paymentStatus === "PAID" ? (
                                 <span className="text-emerald-600 font-bold">PAID</span>
                               ) : (
@@ -842,10 +768,10 @@ export default function AdminDashboard({
                       </div>
 
                       {/* Visual Order Flow Stage Progress Bar */}
-                      <div className="bg-[#F8FAFC] border border-[#E2E8F0]/80 rounded-lg p-3">
+                      <div className="bg-bg border border-border/80 rounded-lg p-3">
                         <div className="flex items-center justify-between text-[11px] mb-2">
-                          <span className="font-semibold text-[#0F172A]">{chip.label}</span>
-                          <span className="font-mono text-[#64748B]">
+                          <span className="font-semibold text-primary-navy">{chip.label}</span>
+                          <span className="font-mono text-secondary-slate">
                             Step {currentStep} of {ORDER_FLOW_STAGES.length}
                           </span>
                         </div>
@@ -862,7 +788,7 @@ export default function AdminDashboard({
                                 key={st}
                                 className={`rounded px-1.5 py-1 text-center border transition-all ${
                                   isCurrent
-                                    ? `${stageChip.bg} ${stageChip.border} ring-1 ring-[#0F172A]/20`
+                                    ? `${stageChip.bg} ${stageChip.border} ring-1 ring-primary-navy/20`
                                     : isDone
                                     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                                     : "bg-white border-slate-200 text-slate-400"
@@ -891,22 +817,22 @@ export default function AdminDashboard({
                           return (
                             <div
                               key={item.id}
-                              className="border border-[#E2E8F0] rounded-lg p-3.5 bg-white flex flex-col justify-between gap-3 shadow-xs"
+                              className="border border-border rounded-lg p-3.5 bg-white flex flex-col justify-between gap-3 shadow-xs"
                             >
                               <div>
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[11px] font-mono text-[#64748B] uppercase">
+                                  <span className="text-[11px] font-mono text-secondary-slate uppercase">
                                     {item.style.name}
                                   </span>
-                                  <span className="text-xs font-bold font-mono text-[#0F172A]">
+                                  <span className="text-xs font-bold font-mono text-primary-navy">
                                     Qty: {item.quantity} × ৳{item.unitPrice.toFixed(2)}
                                   </span>
                                 </div>
 
-                                <div className="text-base font-bold text-[#0F172A] tracking-tight mt-1">
-                                  "{item.customText}"
+                                <div className="text-base font-bold text-primary-navy tracking-tight mt-1 whitespace-pre-line">
+                                  {item.customText}
                                 </div>
-                                <div className="text-xs text-[#64748B] font-mono mt-0.5">
+                                <div className="text-xs text-secondary-slate font-mono mt-0.5">
                                   {item.fontStyle || "helvetiker_bold"}
                                 </div>
                               </div>
@@ -920,7 +846,7 @@ export default function AdminDashboard({
                                       className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs inline-block"
                                       style={{ backgroundColor: textColorHex }}
                                     />
-                                    <span className="font-semibold text-[#0F172A]">
+                                    <span className="font-semibold text-primary-navy">
                                       {item.color.name}
                                     </span>
                                   </div>
@@ -933,7 +859,7 @@ export default function AdminDashboard({
                                       className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs inline-block"
                                       style={{ backgroundColor: baseColorHex }}
                                     />
-                                    <span className="text-[#64748B]">
+                                    <span className="text-secondary-slate">
                                       {item.baseColor?.name || "Matte Black"}
                                     </span>
                                   </div>
@@ -943,7 +869,7 @@ export default function AdminDashboard({
                                 <button
                                   disabled={downloadingStl === `${order.id}-${idx}`}
                                   onClick={() => handleDownloadStl(order, idx)}
-                                  className="h-7 px-2.5 rounded bg-slate-100 hover:bg-slate-200 text-[#0F172A] font-semibold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                                  className="h-7 px-2.5 rounded bg-slate-100 hover:bg-slate-200 text-primary-navy font-semibold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
                                 >
                                   {downloadingStl === `${order.id}-${idx}` ? (
                                     <>
@@ -965,7 +891,7 @@ export default function AdminDashboard({
 
                       {/* Bottom Action Footer */}
                       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                        <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                        <div className="flex items-center gap-1 text-xs text-secondary-slate">
                           <FontAwesomeIcon icon={faLocationDot} className="text-[10px]" />
                           <span className="truncate max-w-sm">{order.shippingAddress}</span>
                         </div>
@@ -973,7 +899,7 @@ export default function AdminDashboard({
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setSelectedTicketOrder(order)}
-                            className="h-8 px-3 rounded-lg border border-[#CBD5E1] text-[#0F172A] hover:bg-[#F8FAFC] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
+                            className="h-8 px-3 rounded-lg border border-border-subtle text-primary-navy hover:bg-bg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
                           >
                             <FontAwesomeIcon icon={faPrint} className="text-xs" />
                             <span>Ticket</span>
@@ -983,7 +909,7 @@ export default function AdminDashboard({
                             <button
                               disabled={updating === order.id}
                               onClick={() => advanceOrderStage(order)}
-                              className="h-8 px-3.5 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all disabled:opacity-50"
+                              className="h-8 px-3.5 bg-primary-navy hover:bg-primary-navy-hover text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all disabled:opacity-50"
                             >
                               <span>Advance</span>
                               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
@@ -1005,19 +931,19 @@ export default function AdminDashboard({
         {activeTab === "filaments" && (
           <div className="space-y-6">
             {/* Header with Add Button */}
-            <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-white border border-border rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-[#0F172A]">
+                <h2 className="text-sm font-bold text-primary-navy">
                   Filaments
                 </h2>
-                <p className="text-xs text-[#64748B]">
+                <p className="text-xs text-secondary-slate">
                   Manage colors and stock status.
                 </p>
               </div>
 
               <button
                 onClick={() => setIsAddColorModalOpen(true)}
-                className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                className="h-9 px-4 bg-tertiary-sage hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faPlus} className="text-xs" />
                 <span>Add Color</span>
@@ -1032,7 +958,7 @@ export default function AdminDashboard({
                     key={color.id}
                     className={`bg-white border rounded-xl p-4 shadow-xs transition-all flex flex-col justify-between gap-3 ${
                       color.inStock
-                        ? "border-[#E2E8F0] hover:border-[#CBD5E1]"
+                        ? "border-border hover:border-border-subtle"
                         : "border-slate-200 opacity-60 bg-slate-50/70"
                     }`}
                   >
@@ -1045,10 +971,10 @@ export default function AdminDashboard({
                             style={{ backgroundColor: color.hexCode }}
                           />
                           <div>
-                            <h3 className="text-sm font-bold text-[#0F172A] leading-tight">
+                            <h3 className="text-sm font-bold text-primary-navy leading-tight">
                               {color.name}
                             </h3>
-                            <span className="text-[11px] font-mono text-[#64748B]">
+                            <span className="text-[11px] font-mono text-secondary-slate">
                               {color.hexCode}
                             </span>
                           </div>
@@ -1119,22 +1045,56 @@ export default function AdminDashboard({
 
             <form onSubmit={handleSaveSettings} className="space-y-6">
               {/* 3D Sizing & Geometry Parameters Card */}
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
+              <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-6">
                 <div>
-                  <h2 className="text-sm font-bold text-[#0F172A]">
+                  <h2 className="text-sm font-bold text-primary-navy">
                     3D Geometry
                   </h2>
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-secondary-slate">
                     Extrusions, scaling, and keychain hole dimensions.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Lines of customer text */}
+                  <div role="radiogroup" aria-labelledby="max-lines-label" className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span id="max-lines-label" className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faFont} className="text-tertiary-sage" />
+                        <span>Lines</span>
+                      </span>
+                      <span className="font-mono text-emerald-700 font-bold">
+                        {maxLines} {maxLines === 1 ? "line" : "lines"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1, 2, 3].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          role="radio"
+                          aria-checked={maxLines === n}
+                          onClick={() => setMaxLines(n)}
+                          className={`h-9 rounded-lg border text-sm font-semibold transition-colors cursor-pointer ${
+                            maxLines === n
+                              ? "border-primary-navy bg-primary-navy text-white"
+                              : "border-border bg-white text-primary-navy hover:bg-bg"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted">
+                      Customers press Enter for a new line. Max 12 characters per line.
+                    </p>
+                  </div>
+
                   {/* Font Size Multiplier */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faFont} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faFont} className="text-tertiary-sage" />
                         <span>Font Scale</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{fontSize.toFixed(2)}x</span>
@@ -1146,9 +1106,9 @@ export default function AdminDashboard({
                       step={0.05}
                       value={fontSize}
                       onChange={(e) => setFontSize(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 1.20x
                     </p>
                   </div>
@@ -1156,8 +1116,8 @@ export default function AdminDashboard({
                   {/* Lettering Emboss Depth */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faLayerGroup} className="text-tertiary-sage" />
                         <span>Text Depth</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(textDepth * 10).toFixed(1)} mm</span>
@@ -1169,9 +1129,9 @@ export default function AdminDashboard({
                       step={0.01}
                       value={textDepth}
                       onChange={(e) => setTextDepth(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 1.8 mm
                     </p>
                   </div>
@@ -1179,8 +1139,8 @@ export default function AdminDashboard({
                   {/* Baseplate Depth */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faLayerGroup} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faLayerGroup} className="text-tertiary-sage" />
                         <span>Base Depth</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(baseDepth * 10).toFixed(1)} mm</span>
@@ -1192,9 +1152,9 @@ export default function AdminDashboard({
                       step={0.02}
                       value={baseDepth}
                       onChange={(e) => setBaseDepth(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 2.0 mm
                     </p>
                   </div>
@@ -1202,8 +1162,8 @@ export default function AdminDashboard({
                   {/* Baseplate Contour Offset Radius R */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
                         <span>Contour Margin</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(offsetRadius * 10).toFixed(1)} mm</span>
@@ -1215,9 +1175,9 @@ export default function AdminDashboard({
                       step={0.01}
                       value={offsetRadius}
                       onChange={(e) => setOffsetRadius(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 1.8 mm
                     </p>
                   </div>
@@ -1225,8 +1185,8 @@ export default function AdminDashboard({
                   {/* Keyring Eyelet Radius */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
                         <span>Eyelet Radius</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(earRadius * 10).toFixed(1)} mm</span>
@@ -1238,9 +1198,9 @@ export default function AdminDashboard({
                       step={0.01}
                       value={earRadius}
                       onChange={(e) => setEarRadius(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 2.2 mm
                     </p>
                   </div>
@@ -1248,8 +1208,8 @@ export default function AdminDashboard({
                   {/* Keyring Through-Hole Radius */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-[#0F172A] flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-[#059669]" />
+                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
+                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
                         <span>Hole Diameter</span>
                       </label>
                       <span className="font-mono text-emerald-700 font-bold">{(holeRadius * 20).toFixed(1)} mm</span>
@@ -1261,9 +1221,9 @@ export default function AdminDashboard({
                       step={0.01}
                       value={holeRadius}
                       onChange={(e) => setHoleRadius(parseFloat(e.target.value))}
-                      className="w-full accent-[#059669] cursor-pointer"
+                      className="w-full accent-tertiary-sage cursor-pointer"
                     />
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-muted">
                       Default: 2.0 mm
                     </p>
                   </div>
@@ -1271,12 +1231,12 @@ export default function AdminDashboard({
               </div>
 
               {/* Pricing & Typography Catalog */}
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-xs space-y-6">
+              <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-6">
                 <div>
-                  <h2 className="text-sm font-bold text-[#0F172A]">
+                  <h2 className="text-sm font-bold text-primary-navy">
                     Pricing &amp; Typography
                   </h2>
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-secondary-slate">
                     Base price and default font style.
                   </p>
                 </div>
@@ -1284,7 +1244,7 @@ export default function AdminDashboard({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Base Price */}
                   <div>
-                    <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
+                    <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-2">
                       Base Price (৳)
                     </label>
                     <div className="relative">
@@ -1304,7 +1264,7 @@ export default function AdminDashboard({
 
                   {/* Default Font Style */}
                   <div>
-                    <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-2">
+                    <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-2">
                       Default Font
                     </label>
                     <select
@@ -1323,7 +1283,7 @@ export default function AdminDashboard({
 
                 {/* Available 3D Font Styles Grid */}
                 <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <h3 className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+                  <h3 className="text-xs font-bold text-primary-navy uppercase tracking-wider">
                     Available Fonts
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
@@ -1349,7 +1309,7 @@ export default function AdminDashboard({
                 <button
                   type="submit"
                   disabled={settingsSaving}
-                  className="h-10 px-6 bg-[#0F172A] hover:bg-[#020617] disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+                  className="h-10 px-6 bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer"
                 >
                   {settingsSaving ? (
                     <>
@@ -1373,12 +1333,12 @@ export default function AdminDashboard({
         ════════════════════════════════════════════════════════ */}
         {activeTab === "preview" && (
           <div className="space-y-6">
-            <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-white border border-border rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-[#0F172A]">
+                <h2 className="text-sm font-bold text-primary-navy">
                   3D Preview
                 </h2>
-                <p className="text-xs text-[#64748B]">
+                <p className="text-xs text-secondary-slate">
                   Test custom text, colors, and typography.
                 </p>
               </div>
@@ -1386,9 +1346,9 @@ export default function AdminDashboard({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Controls */}
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
+              <div className="bg-white border border-border rounded-xl p-5 shadow-xs space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1.5">
                     Text
                   </label>
                   <input
@@ -1401,7 +1361,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1.5">
                     Font
                   </label>
                   <select
@@ -1418,7 +1378,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1.5">
                     Text Color
                   </label>
                   <div className="flex flex-wrap gap-1.5">
@@ -1442,7 +1402,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1.5">
                     Base Color
                   </label>
                   <div className="flex flex-wrap gap-1.5">
@@ -1466,7 +1426,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#0F172A]">Keyring Loop</span>
+                  <span className="text-xs font-bold text-primary-navy">Keyring Loop</span>
                   <input
                     type="checkbox"
                     checked={testKeychainLoop}
@@ -1477,7 +1437,7 @@ export default function AdminDashboard({
               </div>
 
               {/* Right: 3D Canvas */}
-              <div className="lg:col-span-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl overflow-hidden shadow-xs min-h-[360px]">
+              <div className="lg:col-span-2 bg-surface-muted border border-border rounded-xl overflow-hidden shadow-xs min-h-[360px]">
                 <StudioCanvas
                   text={testText}
                   textColor={testTextColor}
@@ -1498,7 +1458,7 @@ export default function AdminDashboard({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+              <h3 className="text-sm font-bold text-primary-navy flex items-center gap-2">
                 <FontAwesomeIcon icon={faPalette} className="text-emerald-600" />
                 <span>Add Filament</span>
               </h3>
@@ -1512,7 +1472,7 @@ export default function AdminDashboard({
 
             <form onSubmit={handleCreateColor} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                   Name
                 </label>
                 <input
@@ -1527,7 +1487,7 @@ export default function AdminDashboard({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                     Hex
                   </label>
                   <div className="flex items-center gap-2">
@@ -1548,7 +1508,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                     Material
                   </label>
                   <select
@@ -1600,7 +1560,7 @@ export default function AdminDashboard({
                   onChange={(e) => setNewColorInStock(e.target.checked)}
                   className="w-4 h-4 accent-slate-900 cursor-pointer"
                 />
-                <label htmlFor="inStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
+                <label htmlFor="inStockCheck" className="text-xs font-bold text-primary-navy cursor-pointer">
                   In stock
                 </label>
               </div>
@@ -1616,7 +1576,7 @@ export default function AdminDashboard({
                 <button
                   type="submit"
                   disabled={filamentActionLoading}
-                  className="h-9 px-4 bg-[#059669] hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  className="h-9 px-4 bg-tertiary-sage hover:bg-[#047857] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
                 >
                   {filamentActionLoading ? "Adding…" : "Add Filament"}
                 </button>
@@ -1633,7 +1593,7 @@ export default function AdminDashboard({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+              <h3 className="text-sm font-bold text-primary-navy flex items-center gap-2">
                 <FontAwesomeIcon icon={faPenToSquare} className="text-slate-800" />
                 <span>Edit Filament</span>
               </h3>
@@ -1647,7 +1607,7 @@ export default function AdminDashboard({
 
             <form onSubmit={handleUpdateColor} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                   Name
                 </label>
                 <input
@@ -1663,7 +1623,7 @@ export default function AdminDashboard({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                     Hex
                   </label>
                   <div className="flex items-center gap-2">
@@ -1694,7 +1654,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
                     Material
                   </label>
                   <select
@@ -1724,7 +1684,7 @@ export default function AdminDashboard({
                   }
                   className="w-4 h-4 accent-slate-900 cursor-pointer"
                 />
-                <label htmlFor="editInStockCheck" className="text-xs font-bold text-[#0F172A] cursor-pointer">
+                <label htmlFor="editInStockCheck" className="text-xs font-bold text-primary-navy cursor-pointer">
                   In stock
                 </label>
               </div>
@@ -1740,7 +1700,7 @@ export default function AdminDashboard({
                 <button
                   type="submit"
                   disabled={filamentActionLoading}
-                  className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  className="h-9 px-4 bg-primary-navy hover:bg-primary-navy-hover text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
                 >
                   {filamentActionLoading ? "Saving…" : "Save"}
                 </button>
@@ -1762,7 +1722,7 @@ export default function AdminDashboard({
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
                   JOB TICKET
                 </span>
-                <h3 className="text-base font-bold text-[#0F172A] mt-1">
+                <h3 className="text-base font-bold text-primary-navy mt-1">
                   PX-{selectedTicketOrder.id.slice(0, 8).toUpperCase()}
                 </h3>
               </div>
@@ -1778,11 +1738,11 @@ export default function AdminDashboard({
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-3 font-mono">
               <div className="flex justify-between border-b border-slate-200 pb-2">
                 <span className="text-slate-500">Customer:</span>
-                <span className="font-bold text-[#0F172A]">{selectedTicketOrder.customerName}</span>
+                <span className="font-bold text-primary-navy">{selectedTicketOrder.customerName}</span>
               </div>
               <div className="flex justify-between border-b border-slate-200 pb-2">
                 <span className="text-slate-500">Phone:</span>
-                <span className="font-bold text-[#0F172A]">
+                <span className="font-bold text-primary-navy">
                   {selectedTicketOrder.customerPhone || "N/A"}
                 </span>
               </div>
@@ -1794,17 +1754,17 @@ export default function AdminDashboard({
               </div>
               <div className="flex justify-between border-b border-slate-200 pb-2">
                 <span className="text-slate-500">Layer:</span>
-                <span className="font-bold text-[#0F172A]">0.20mm Standard</span>
+                <span className="font-bold text-primary-navy">0.20mm Standard</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Bed:</span>
-                <span className="font-bold text-[#0F172A]">60°C Textured PEI</span>
+                <span className="font-bold text-primary-navy">60°C Textured PEI</span>
               </div>
             </div>
 
             {/* Items in Job */}
             <div className="space-y-2">
-              <span className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
+              <span className="text-xs font-bold text-primary-navy uppercase tracking-wider">
                 Items ({selectedTicketOrder.orderItems.length})
               </span>
               {selectedTicketOrder.orderItems.map((item, i) => (
@@ -1813,10 +1773,10 @@ export default function AdminDashboard({
                   className="border border-slate-200 rounded-lg p-3 bg-white text-xs space-y-1.5"
                 >
                   <div className="flex items-center justify-between font-bold">
-                    <span className="text-sm text-[#0F172A]">"{item.customText}"</span>
+                    <span className="text-sm text-primary-navy whitespace-pre-line">{item.customText}</span>
                     <span className="font-mono text-slate-500">Qty: {item.quantity}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-[11px] text-[#64748B]">
+                  <div className="flex items-center gap-4 text-[11px] text-secondary-slate">
                     <span>Top: <strong className="text-slate-900">{item.color.name}</strong></span>
                     <span>Base: <strong className="text-slate-900">{item.baseColor?.name || "Matte Black"}</strong></span>
                   </div>
@@ -1836,7 +1796,7 @@ export default function AdminDashboard({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="h-9 px-4 bg-[#0F172A] hover:bg-[#020617] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                className="h-9 px-4 bg-primary-navy hover:bg-primary-navy-hover text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faPrint} className="text-xs" />
                 <span>Print Ticket</span>

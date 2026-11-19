@@ -5,6 +5,6 @@
 #   stand_desk.glb            — angled desk stand
 #   keychain_loop.glb         — keychain ring attachment
 #
-# Models are loaded by StudioCanvas.tsx as optional attachments
-# combined with the generated TextMesh.
+# Not loaded by the app yet: StudioCanvas.tsx currently generates
+# the keychain plate and loop procedurally.
 

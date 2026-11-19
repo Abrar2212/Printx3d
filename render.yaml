@@ -12,8 +12,12 @@ services:
         fromDatabase:
           name: printx3d-db
           property: connectionString
-      - key: OPERATOR_PIN
-        value: "1234"
+      - key: NEXTAUTH_SECRET # signs staff login cookies
+        generateValue: true
+      - key: STAFF_PASSWORD # reception: order queue + STL downloads
+        sync: false
+      - key: ADMIN_PASSWORD # everything, incl. filaments and 3D settings
+        sync: false
 
 databases:
   - name: printx3d-db

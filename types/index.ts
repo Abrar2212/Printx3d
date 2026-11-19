@@ -66,6 +66,30 @@ export const FONT_STYLE_OPTIONS: FontStyleOption[] = [
     description: "Lightweight, contemporary understated typography",
     sampleText: "Clean",
   },
+  // Converted with scripts/font-to-typeface.py. Licenses: see public/fonts/README.md.
+  {
+    id: "gravity_bold",
+    name: "Gravity",
+    family: "Modern Sans",
+    description: "Clean geometric sans, bold weight",
+    sampleText: "Gravity",
+  },
+  // LICENSE: personal use only. Buy the commercial license before selling prints in this font.
+  {
+    id: "american_captain",
+    name: "Captain",
+    family: "Condensed Display",
+    description: "Tall, narrow all-caps poster lettering",
+    sampleText: "CAPTAIN",
+  },
+  // LICENSE: personal use only (demo). Buy the commercial license before selling prints in this font.
+  {
+    id: "thunder_script",
+    name: "Thunder Script",
+    family: "Brush Script",
+    description: "Flowing handwritten brush script",
+    sampleText: "Thunder",
+  },
 ];
 
 // ─── Style / Product ──────────────────────────────────────────
@@ -74,6 +98,7 @@ export interface StyleConfig {
   bevel: number;
   hasBasePlate: boolean;
   hasKeychainLoop?: boolean;
+  maxLines?: number; // 1–3 lines of customer text (admin "Lines" setting); default 3
 }
 
 export interface Style {

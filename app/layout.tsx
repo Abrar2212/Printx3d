@@ -9,10 +9,9 @@ config.autoAddCss = false;
 
 export const viewport: Viewport = {
   width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
+  initialScale: 1, // no maximumScale: people must be able to pinch-zoom
   viewportFit: "cover",
-  themeColor: "#0F172A",
+  themeColor: "#F9EDED", // brand-tint, matches the hero
 };
 
 const lato = Lato({
@@ -30,9 +29,8 @@ const firaCode = Fira_Code({
 });
 
 export const metadata: Metadata = {
-  title: "PrintX3D — Precision 3D Printed Custom Studio",
-  description:
-    "Design and order precision-crafted custom 3D keychains, desk plates, and signage.",
+  title: "PrintX3D — Custom 3D Printed Name Keychains",
+  description: "Design a two-colour 3D printed name keychain, preview it in 3D, and get it delivered.",
 };
 
 export default function RootLayout({
@@ -47,7 +45,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className="font-sans bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-[#059669]/20 selection:text-[#0F172A]"
+        className="font-sans bg-bg text-primary-navy antialiased selection:bg-tertiary-sage/20 selection:text-primary-navy"
         suppressHydrationWarning
       >
         {children}

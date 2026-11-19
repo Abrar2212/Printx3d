@@ -1,66 +1,59 @@
 "use client";
 
+import { useId } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import type { FilamentColor } from "@/types";
 
 interface ColorPickerProps {
   label?: string;
-  sublabel?: string;
   colors: FilamentColor[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
 
-export default function ColorPicker({
-  label = "Filament Material & Color",
-  sublabel,
-  colors,
-  selectedId,
-  onSelect,
-}: ColorPickerProps) {
+// Perceived brightness, so the check mark stays visible on any swatch
+function isLight(hex: string) {
+  const n = parseInt(hex.replace("#", "").padEnd(6, "0").slice(0, 6), 16);
+  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150;
+}
+
+export default function ColorPicker({ label = "Colour", colors, selectedId, onSelect }: ColorPickerProps) {
+  const labelId = useId();
   const selectedColor = colors.find((c) => c.id === selectedId);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex justify-between items-center">
-        <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider block">
+    <div role="group" aria-labelledby={labelId} className="space-y-2">
+      <div className="flex justify-between items-baseline">
+        <span id={labelId} className="text-sm font-semibold text-primary-navy">
           {label}
-        </label>
-        {selectedColor && (
-          <span className="text-[11px] font-semibold text-[#059669] bg-[#059669]/10 px-2 py-0.5 rounded font-mono">
-            {selectedColor.name}
-          </span>
-        )}
+        </span>
+        {selectedColor && <span className="text-sm text-secondary-slate">{selectedColor.name}</span>}
       </div>
 
-      <div className="grid grid-cols-6 gap-1.5">
+      <div className="grid grid-cols-6 gap-2">
         {colors.map((color) => {
           const isSelected = selectedId === color.id;
-          const isDark =
-            color.hexCode === "#111111" ||
-            color.hexCode === "#0047AB" ||
-            color.hexCode === "#1a1a1a";
-
           return (
             <button
               key={color.id}
               type="button"
-              onClick={() => color.inStock && onSelect(color.id)}
+              onClick={() => onSelect(color.id)}
               disabled={!color.inStock}
-              title={`${color.name} (${color.materialType}) - ${color.inStock ? "In Stock" : "Out of Stock"}`}
-              className={`h-7 rounded-md border flex items-center justify-center relative transition-all ${
+              aria-pressed={isSelected}
+              aria-label={`${color.name}${color.inStock ? "" : " (out of stock)"}`}
+              title={color.name}
+              className={`h-10 rounded-lg border flex items-center justify-center transition-shadow cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed focus-visible:outline-none ${
                 isSelected
-                  ? "border-[#0F172A] ring-2 ring-[#0F172A]/40 scale-105 shadow-xs z-10"
-                  : "border-[#CBD5E1] hover:border-[#64748B]"
-              } ${!color.inStock ? "opacity-25 cursor-not-allowed" : "cursor-pointer hover:scale-102"}`}
+                  ? "border-primary-navy ring-2 ring-offset-2 ring-primary-navy"
+                  : "border-black/10 hover:ring-2 hover:ring-offset-1 hover:ring-border-subtle focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-navy/40"
+              }`}
               style={{ backgroundColor: color.hexCode }}
             >
               {isSelected && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full border shadow-xs"
-                  style={{
-                    backgroundColor: isDark ? "#FFFFFF" : "#0F172A",
-                    borderColor: isDark ? "#E2E8F0" : "#1E293B",
-                  }}
+                <FontAwesomeIcon
+                  icon={faCheck}
+                  className={`text-xs ${isLight(color.hexCode) ? "text-primary-navy" : "text-white"}`}
                 />
               )}
             </button>

@@ -36,12 +36,11 @@ export default function ColorDuoPicker({
   };
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-semibold text-[#0F172A] uppercase tracking-wider">
-        Color Presets
-      </label>
-
-      <div className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-labelledby="duo-label" className="space-y-2">
+      <span id="duo-label" className="block text-sm font-semibold text-primary-navy">
+        Popular combos
+      </span>
+      <div className="flex flex-wrap gap-2">
         {COLOR_DUO_PRESETS.map((preset) => {
           const isActive =
             selectedBaseColor?.hexCode.toLowerCase() === preset.baseColorHex.toLowerCase() &&
@@ -52,23 +51,25 @@ export default function ColorDuoPicker({
               key={preset.name}
               type="button"
               title={preset.name}
+              aria-label={preset.name}
+              aria-pressed={isActive}
               onClick={() => handlePresetClick(preset)}
-              className={`relative w-8 h-8 rounded-lg transition-all flex items-center justify-center p-0.5 cursor-pointer ${
+              className={`w-11 h-11 rounded-full p-1 transition-shadow cursor-pointer focus-visible:outline-none ${
                 isActive
-                  ? "border-2 border-[#0F172A] scale-105 shadow-xs"
-                  : "border border-[#E2E8F0] hover:border-[#94A3B8] hover:scale-105 shadow-2xs"
+                  ? "ring-2 ring-primary-navy"
+                  : "ring-1 ring-border hover:ring-border-subtle focus-visible:ring-2 focus-visible:ring-primary-navy/40"
               }`}
             >
-              {/* Dual Swatch Display: Base color outer with text color inner disc */}
-              <div
-                className="w-full h-full rounded-[5px] overflow-hidden relative"
+              {/* Base colour ring with the letter colour in the middle */}
+              <span
+                className="w-full h-full rounded-full flex items-center justify-center border border-black/10"
                 style={{ backgroundColor: preset.baseColorHex }}
               >
-                <div
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full shadow-xs border border-black/15"
+                <span
+                  className="w-4 h-4 rounded-full border border-black/10"
                   style={{ backgroundColor: preset.textColorHex }}
                 />
-              </div>
+              </span>
             </button>
           );
         })}
@@ -76,4 +77,3 @@ export default function ColorDuoPicker({
     </div>
   );
 }
-

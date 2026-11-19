@@ -18,6 +18,7 @@ const UpdateStyleSchema = z.object({
       bevel: z.number().optional(),
       hasBasePlate: z.boolean().optional(),
       hasKeychainLoop: z.boolean().optional(),
+      maxLines: z.number().int().min(1).max(3).optional(), // lines of customer text
     })
     .passthrough()
     .optional(),

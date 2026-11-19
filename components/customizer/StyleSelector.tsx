@@ -8,50 +8,37 @@ interface StyleSelectorProps {
   onSelect: (id: string) => void;
 }
 
-export default function StyleSelector({
-  styles,
-  selectedId,
-  onSelect,
-}: StyleSelectorProps) {
+export default function StyleSelector({ styles, selectedId, onSelect }: StyleSelectorProps) {
+  if (styles.length <= 1) return null; // nothing to choose
+
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-[#0F172A]">
-        Base Spec & Form Factor
-      </label>
-      <div className="grid grid-cols-1 gap-2.5">
+    <div role="radiogroup" aria-labelledby="style-label" className="space-y-2">
+      <span id="style-label" className="block text-sm font-semibold text-primary-navy">
+        Type
+      </span>
+      <div className="space-y-2">
         {styles.map((style) => {
           const isSelected = selectedId === style.id;
           return (
             <button
               key={style.id}
               type="button"
+              role="radio"
+              aria-checked={isSelected}
               onClick={() => onSelect(style.id)}
-              className={`p-3 rounded-lg border text-left flex items-center justify-between transition-all ${
-                isSelected
-                  ? "border-[#0F172A] bg-[#0F172A]/[0.02] shadow-sm ring-1 ring-[#0F172A]"
-                  : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1] hover:bg-[#F8FAFC]"
+              className={`w-full min-h-12 px-4 rounded-xl border text-left flex items-center justify-between gap-3 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-navy/30 ${
+                isSelected ? "border-primary-navy bg-primary-navy/[0.03]" : "border-border hover:border-border-subtle"
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <span className="flex items-center gap-3">
                 <span
-                  className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
-                    isSelected
-                      ? "border-[#0F172A] bg-[#0F172A]"
-                      : "border-[#CBD5E1] bg-white"
+                  className={`w-4 h-4 rounded-full border-2 ${
+                    isSelected ? "border-primary-navy bg-primary-navy shadow-[inset_0_0_0_2px_white]" : "border-border-subtle"
                   }`}
-                >
-                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </span>
-                <div>
-                  <div className="text-sm font-semibold text-[#0F172A]">
-                    {style.name}
-                  </div>
-                  <div className="text-xs text-[#64748B]">
-                    Typeface: {style.fontFamily}
-                  </div>
-                </div>
-              </div>
-              <span className="text-sm font-bold font-mono text-[#0F172A]">
+                />
+                <span className="text-sm font-medium text-primary-navy">{style.name}</span>
+              </span>
+              <span className="text-sm font-semibold text-primary-navy tabular-nums">
                 ৳{style.basePrice.toFixed(2)}
               </span>
             </button>

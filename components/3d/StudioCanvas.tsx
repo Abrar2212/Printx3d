@@ -7,8 +7,14 @@ import * as THREE from "three";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlay, faPause, faRotate, faLock } from "@fortawesome/free-solid-svg-icons";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
-import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
+import {
+  buildKeychainPlate,
+  buildKeychainText,
+  keychainText,
+  BASE_DEPTH,
+  TEXT_SINK,
+} from "@/lib/keychain-geometry";
 
 interface StudioCanvasProps {
   text: string;
@@ -19,34 +25,6 @@ interface StudioCanvasProps {
   extrusionDepth?: number;
   bevel?: number;
   hasKeychainLoop?: boolean;
-}
-
-// Smooths discrete contour points with a 5-tap Gaussian blur kernel for silky organic curves
-function smoothContourPoints(pts: THREE.Vector2[], passes = 6): THREE.Vector2[] {
-  if (pts.length < 5) return pts;
-  let curr = pts;
-  for (let p = 0; p < passes; p++) {
-    const next: THREE.Vector2[] = [];
-    for (let i = 0; i < curr.length; i++) {
-      if (i < 2 || i >= curr.length - 2) {
-        next.push(curr[i]);
-      } else {
-        const p_2 = curr[i - 2];
-        const p_1 = curr[i - 1];
-        const c = curr[i];
-        const p1 = curr[i + 1];
-        const p2 = curr[i + 2];
-        next.push(
-          new THREE.Vector2(
-            c.x,
-            0.06 * p_2.y + 0.24 * p_1.y + 0.40 * c.y + 0.24 * p1.y + 0.06 * p2.y
-          )
-        );
-      }
-    }
-    curr = next;
-  }
-  return curr;
 }
 
 // Helper: convert hex color string to RGB numbers
@@ -184,322 +162,18 @@ function KeychainMesh({
   fontStyle = "helvetiker_bold",
   hasKeychainLoop = true,
 }: StudioCanvasProps) {
-  const safeText = (text.trim() || "KEY").slice(0, 30);
+  const safeText = keychainText(text);
   const fontPath = `/fonts/${fontStyle}.typeface.json`;
 
   // Load font geometry
   const font = useLoader(FontLoader, fontPath);
 
-  // Sleek, physical 3D print dimensions
-  const baseDepth = 0.20;     // 2.0mm thick unified background contour plate
-  const textDepth = 0.18;     // 1.8mm crisp embossed letters
-
-  // 1. Base Geometry — CAD-Grade Per-Letter Contour Silhouette (Upper/Lower Envelopes + Precise First/Last Letter Profiles)
-  const baseGeometry = useMemo(() => {
-    const shapes = font.generateShapes(safeText, 1.2);
-    const letterPts: THREE.Vector2[] = [];
-    shapes.forEach((s) => {
-      s.getSpacedPoints(180).forEach((p) => letterPts.push(new THREE.Vector2(p.x, p.y)));
-      s.holes.forEach((h) => {
-        h.getSpacedPoints(100).forEach((p) => letterPts.push(new THREE.Vector2(p.x, p.y)));
-      });
-    });
-
-    const rawBBox = new THREE.Box2();
-    letterPts.forEach((p) => rawBBox.expandByPoint(p));
-
-    const firstShapes = font.generateShapes(safeText[0] || "A", 1.2);
-    const firstBox = new THREE.Box2();
-    const firstPts: THREE.Vector2[] = [];
-    firstShapes.forEach((s) => s.getSpacedPoints(150).forEach((p) => {
-      firstBox.expandByPoint(p);
-      firstPts.push(p);
-    }));
-
-    const lastChar = safeText[safeText.length - 1] || "A";
-    const lastShapes = font.generateShapes(lastChar, 1.2);
-    const lastBox = new THREE.Box2();
-    const lastPts: THREE.Vector2[] = [];
-    lastShapes.forEach((s) => s.getSpacedPoints(150).forEach((p) => {
-      lastBox.expandByPoint(p);
-      lastPts.push(p);
-    }));
-
-    const lastCharOffset = rawBBox.max.x - lastBox.max.x;
-    const worldLastPts = lastPts.map((p) => new THREE.Vector2(p.x + lastCharOffset, p.y));
-
-    const R = 0.18; // Offset radius around text
-    const step = 0.015; // Fine sampling step
-
-    // Start and end anchors for envelopes:
-    let firstTopPt = firstPts[0];
-    for (const p of firstPts) {
-      if (p.y > firstTopPt.y) firstTopPt = p;
-    }
-    let firstBottomPt = firstPts[0];
-    for (const p of firstPts) {
-      if (p.x < firstBottomPt.x) firstBottomPt = p;
-    }
-
-    let lastRightPt = worldLastPts[0];
-    for (const p of worldLastPts) {
-      if (p.x > lastRightPt.x) lastRightPt = p;
-    }
-
-    // 1. Bottom Envelope: from firstBottomPt.x to lastRightPt.x
-    const bottomXStart = firstBottomPt.x;
-    const bottomXEnd = lastRightPt.x;
-    const bottomXSamples: number[] = [];
-    for (let x = bottomXStart; x <= bottomXEnd + 0.0001; x += step) {
-      bottomXSamples.push(+x.toFixed(4));
-    }
-
-    const rawLower: number[] = [];
-    for (let i = 0; i < bottomXSamples.length; i++) {
-      const x = bottomXSamples[i];
-      let minY = Infinity;
-      for (const p of letterPts) {
-        const dx = Math.abs(x - p.x);
-        if (dx <= R) {
-          const d = Math.sqrt(Math.max(0, R * R - dx * dx));
-          if (p.y - d < minY) minY = p.y - d;
-        }
-      }
-      if (minY === Infinity) minY = -0.16;
-      if (minY > -0.06) minY = -0.06;
-      rawLower.push(minY);
-    }
-
-    const bridgeSpan = 3;
-    const bridgedLower: number[] = [];
-    for (let i = 0; i < rawLower.length; i++) {
-      let m = Infinity;
-      for (let j = Math.max(0, i - bridgeSpan); j <= Math.min(rawLower.length - 1, i + bridgeSpan); j++) {
-        if (rawLower[j] < m) m = rawLower[j];
-      }
-      bridgedLower.push(m);
-    }
-
-    let smoothLower = [...bridgedLower];
-    for (let pass = 0; pass < 3; pass++) {
-      const next: number[] = [];
-      for (let i = 0; i < smoothLower.length; i++) {
-        if (i === 0 || i === smoothLower.length - 1) {
-          next.push(smoothLower[i]);
-        } else {
-          next.push(0.20 * smoothLower[i - 1] + 0.60 * smoothLower[i] + 0.20 * smoothLower[i + 1]);
-        }
-      }
-      smoothLower = next;
-    }
-
-    // 2. Top Envelope: from firstTopPt.x to lastRightPt.x
-    const topXStart = firstTopPt.x;
-    const topXEnd = lastRightPt.x;
-    const topXSamples: number[] = [];
-    for (let x = topXStart; x <= topXEnd + 0.0001; x += step) {
-      topXSamples.push(+x.toFixed(4));
-    }
-
-    const rawUpper: number[] = [];
-    for (let i = 0; i < topXSamples.length; i++) {
-      const x = topXSamples[i];
-      let maxY = -Infinity;
-      for (const p of letterPts) {
-        const dx = Math.abs(x - p.x);
-        if (dx <= R) {
-          const d = Math.sqrt(Math.max(0, R * R - dx * dx));
-          if (p.y + d > maxY) maxY = p.y + d;
-        }
-      }
-      if (maxY === -Infinity) maxY = 0.60;
-      rawUpper.push(maxY);
-    }
-
-    const bridgedUpper: number[] = [];
-    for (let i = 0; i < rawUpper.length; i++) {
-      let m = -Infinity;
-      for (let j = Math.max(0, i - bridgeSpan); j <= Math.min(rawUpper.length - 1, i + bridgeSpan); j++) {
-        if (rawUpper[j] > m) m = rawUpper[j];
-      }
-      bridgedUpper.push(m);
-    }
-
-    let smoothUpper = [...bridgedUpper];
-    for (let pass = 0; pass < 3; pass++) {
-      const next: number[] = [];
-      for (let i = 0; i < smoothUpper.length; i++) {
-        if (i === 0 || i === smoothUpper.length - 1) {
-          next.push(smoothUpper[i]);
-        } else {
-          next.push(0.20 * smoothUpper[i - 1] + 0.60 * smoothUpper[i] + 0.20 * smoothUpper[i + 1]);
-        }
-      }
-      smoothUpper = next;
-    }
-
-    // 3. Right Flank: Follows true contour of last letter from bottom to top
-    const yBottomRight = smoothLower[smoothLower.length - 1];
-    const yTopRight = smoothUpper[smoothUpper.length - 1];
-    const rightSamples: { x: number; y: number }[] = [];
-    const stepY = 0.015;
-
-    for (let y = yBottomRight; y <= yTopRight + 0.0001; y += stepY) {
-      let maxX = -Infinity;
-      for (const p of worldLastPts) {
-        const dy = Math.abs(y - p.y);
-        if (dy <= R) {
-          const d = Math.sqrt(Math.max(0, R * R - dy * dy));
-          if (p.x + d > maxX) maxX = p.x + d;
-        }
-      }
-      if (maxX === -Infinity) maxX = lastRightPt.x + R;
-      rightSamples.push({ x: maxX, y: +y.toFixed(4) });
-    }
-
-    let smoothRight = [...rightSamples];
-    for (let pass = 0; pass < 3; pass++) {
-      const next: { x: number; y: number }[] = [];
-      for (let i = 0; i < smoothRight.length; i++) {
-        if (i === 0 || i === smoothRight.length - 1) {
-          next.push(smoothRight[i]);
-        } else {
-          next.push({
-            x: 0.20 * smoothRight[i - 1].x + 0.60 * smoothRight[i].x + 0.20 * smoothRight[i + 1].x,
-            y: smoothRight[i].y,
-          });
-        }
-      }
-      smoothRight = next;
-    }
-
-    // 4. Left Flank: Follows true contour of first letter from bottom to top
-    const yTopLeft = smoothUpper[0];
-    const yBottomLeft = smoothLower[0];
-    const earRadius = 0.22;
-    const holeRadius = 0.10;
-    const earOffset = 0.14;
-    const earY = Math.max(0.48, Math.min(0.65, (firstBox.max.y + firstBox.min.y) / 2));
-
-    const leftSamples: { x: number; y: number }[] = [];
-    for (let y = yBottomLeft; y <= yTopLeft + 0.0001; y += stepY) {
-      let minX = Infinity;
-      for (const p of firstPts) {
-        const dy = Math.abs(y - p.y);
-        if (dy <= R) {
-          const d = Math.sqrt(Math.max(0, R * R - dy * dy));
-          if (p.x - d < minX) minX = p.x - d;
-        }
-      }
-      if (minX === Infinity) minX = firstBox.min.x - R;
-      leftSamples.push({ x: minX, y: +y.toFixed(4) });
-    }
-
-    // Natural contour position at earY:
-    let contourXAtEar = firstBox.min.x - R;
-    let minDiff = Infinity;
-    for (const lp of leftSamples) {
-      const diff = Math.abs(lp.y - earY);
-      if (diff < minDiff) {
-        minDiff = diff;
-        contourXAtEar = lp.x;
-      }
-    }
-    const earX = contourXAtEar - earOffset;
-
-    // Attach keyring loop if enabled:
-    const leftWithEar: { x: number; y: number }[] = [];
-    for (const lp of leftSamples) {
-      if (hasKeychainLoop) {
-        const dy = Math.abs(lp.y - earY);
-        if (dy < earRadius) {
-          const dxEar = Math.sqrt(earRadius * earRadius - dy * dy);
-          leftWithEar.push({ x: Math.min(lp.x, earX - dxEar), y: lp.y });
-        } else {
-          leftWithEar.push(lp);
-        }
-      } else {
-        leftWithEar.push(lp);
-      }
-    }
-
-    let smoothLeft = [...leftWithEar];
-    for (let pass = 0; pass < 3; pass++) {
-      const next: { x: number; y: number }[] = [];
-      for (let i = 0; i < smoothLeft.length; i++) {
-        if (i === 0 || i === smoothLeft.length - 1) {
-          next.push(smoothLeft[i]);
-        } else {
-          next.push({
-            x: 0.15 * smoothLeft[i - 1].x + 0.70 * smoothLeft[i].x + 0.15 * smoothLeft[i + 1].x,
-            y: smoothLeft[i].y,
-          });
-        }
-      }
-      smoothLeft = next;
-    }
-
-    // 5. Build Unified 2D Shape
-    const plate = new THREE.Shape();
-    plate.moveTo(bottomXSamples[0], smoothLower[0]);
-    for (let i = 1; i < bottomXSamples.length; i++) {
-      plate.lineTo(bottomXSamples[i], smoothLower[i]);
-    }
-    for (let i = 0; i < smoothRight.length; i++) {
-      plate.lineTo(smoothRight[i].x, smoothRight[i].y);
-    }
-    for (let i = topXSamples.length - 1; i >= 0; i--) {
-      plate.lineTo(topXSamples[i], smoothUpper[i]);
-    }
-    for (let i = smoothLeft.length - 1; i >= 0; i--) {
-      plate.lineTo(smoothLeft[i].x, smoothLeft[i].y);
-    }
-    plate.closePath();
-
-    if (hasKeychainLoop) {
-      const hole = new THREE.Path();
-      hole.absarc(earX, earY, holeRadius, 0, Math.PI * 2, true);
-      plate.holes.push(hole);
-    }
-
-    // Extrude the single unified continuous plate with silky smooth rounded bevel
-    const geom = new THREE.ExtrudeGeometry(plate, {
-      depth: baseDepth,
-      curveSegments: 28,
-      bevelEnabled: true,
-      bevelThickness: 0.024,
-      bevelSize: 0.020,
-      bevelSegments: 4,
-    });
-
-    // Flatten rear vertices to z = 0 for a 100% planar flat back
-    const pos = geom.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      if (pos.getZ(i) < 0) {
-        pos.setZ(i, 0);
-      }
-    }
-    geom.computeVertexNormals();
-    geom.computeBoundingBox();
-    return geom;
-  }, [safeText, font, baseDepth, hasKeychainLoop]);
-
-  // 2. Foreground Embossed Text Geometry — Silky Smooth Edges (optimized for mobile)
-  const frontGeometry = useMemo(() => {
-    const geom = new TextGeometry(safeText, {
-      font,
-      size: 1.2,
-      depth: textDepth,
-      curveSegments: 32,
-      bevelEnabled: true,
-      bevelThickness: 0.022,
-      bevelSize: 0.018,
-      bevelSegments: 5,
-    });
-    geom.computeVertexNormals();
-    geom.computeBoundingBox();
-    return geom;
-  }, [safeText, font, textDepth]);
+  // Geometry is shared with lib/stl-generator.ts so the print matches this preview exactly
+  const baseGeometry = useMemo(
+    () => buildKeychainPlate(font, safeText, hasKeychainLoop),
+    [safeText, font, hasKeychainLoop]
+  );
+  const frontGeometry = useMemo(() => buildKeychainText(font, safeText), [safeText, font]);
 
   // Measure bounding box of unified baseplate
   const bbox = baseGeometry.boundingBox || new THREE.Box3();
@@ -556,7 +230,7 @@ function KeychainMesh({
         </mesh>
 
         {/* ── 2. Foreground Embossed Text (Seamlessly fused into baseplate at z = baseDepth) ── */}
-        <mesh geometry={frontGeometry} position={[0, 0, baseDepth - 0.008]} castShadow>
+        <mesh geometry={frontGeometry} position={[0, 0, BASE_DEPTH - TEXT_SINK]} castShadow>
           <meshPhysicalMaterial {...textMatProps} />
         </mesh>
       </group>
@@ -634,7 +308,7 @@ export default function StudioCanvas(props: StudioCanvasProps) {
       </Canvas>
 
       {/* Mobile Sticky Lock Indicator */}
-      <div className="lg:hidden absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-[#0F172A]/85 backdrop-blur-md text-white text-[10px] font-mono px-2 py-1 rounded-md shadow-xs select-none">
+      <div className="lg:hidden absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-primary-navy/85 backdrop-blur-md text-white text-[10px] font-mono px-2 py-1 rounded-md shadow-xs select-none">
         <FontAwesomeIcon icon={faLock} className="text-[9px] text-[#10B981]" />
         <span className="font-semibold tracking-wide">3D VIEW LOCKED</span>
       </div>
@@ -648,8 +322,8 @@ export default function StudioCanvas(props: StudioCanvasProps) {
           title={isAutoRotating ? "Pause Rotation" : "Auto-Rotate View"}
           className={`h-7 sm:h-8 px-2.5 sm:px-3 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-all shadow-xs backdrop-blur-md cursor-pointer ${
             isAutoRotating
-              ? "bg-[#059669] text-white border-[#059669]"
-              : "bg-white/90 hover:bg-white text-[#0F172A] border-[#CBD5E1]"
+              ? "bg-tertiary-sage text-white border-tertiary-sage"
+              : "bg-white/90 hover:bg-white text-primary-navy border-border-subtle"
           }`}
         >
           <FontAwesomeIcon icon={isAutoRotating ? faPause : faPlay} className="text-[10px]" />
@@ -661,7 +335,7 @@ export default function StudioCanvas(props: StudioCanvasProps) {
           type="button"
           onClick={handleResetCamera}
           title="Reset Camera View"
-          className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-lg text-xs font-semibold border bg-white/90 hover:bg-white text-[#0F172A] border-[#CBD5E1] transition-all shadow-xs backdrop-blur-md flex items-center gap-1.5 cursor-pointer"
+          className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-lg text-xs font-semibold border bg-white/90 hover:bg-white text-primary-navy border-border-subtle transition-all shadow-xs backdrop-blur-md flex items-center gap-1.5 cursor-pointer"
         >
           <FontAwesomeIcon icon={faRotate} className="text-[10px]" />
           <span className="hidden sm:inline">Reset</span>
@@ -669,8 +343,8 @@ export default function StudioCanvas(props: StudioCanvasProps) {
       </div>
 
       {/* Helpful Hint Pill */}
-      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-sm px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-[#E2E8F0] text-[10px] sm:text-xs font-medium text-[#64748B] shadow-sm select-none">
-        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#059669] animate-pulse" />
+      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-sm px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-border text-[10px] sm:text-xs font-medium text-secondary-slate shadow-sm select-none">
+        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-tertiary-sage animate-pulse" />
         <span>Drag to rotate</span>
         <span className="hidden sm:inline">· Scroll to zoom</span>
       </div>

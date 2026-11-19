@@ -49,6 +49,7 @@ export default async function AdminPage() {
   return (
     <AdminDashboard
       orders={serializedOrders}
+      role="admin"
       initialColors={colors}
       initialStyles={serializedStyles}
     />

@@ -52,8 +52,6 @@ export async function GET(
       fontStyle,
       hasKeychainLoop,
       scale: 16.0,
-      baseDepthMm: 2.0,
-      textDepthMm: 1.8,
     });
 
     // Sanitize filename for operating systems and slicers (Bambu Studio, PrusaSlicer, Cura)

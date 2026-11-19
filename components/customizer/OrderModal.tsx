@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -10,8 +10,11 @@ import {
   faArrowRight,
   faPlus,
   faMinus,
+  faSpinner,
+  faCircleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import type { Style, FilamentColor } from "@/types";
+import { oneLine } from "@/lib/keychain-text";
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -23,6 +26,9 @@ interface OrderModalProps {
   selectedFontStyle: string;
 }
 
+const fieldClass =
+  "w-full px-4 rounded-xl border border-border-subtle bg-surface text-base text-primary-navy placeholder:text-muted focus:outline-none focus:border-primary-navy focus:ring-4 focus:ring-primary-navy/10 transition-colors";
+
 export default function OrderModal({
   isOpen,
   onClose,
@@ -33,14 +39,13 @@ export default function OrderModal({
   selectedFontStyle,
 }: OrderModalProps) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [quantity, setQuantity] = useState(1);
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Success state with generated order details
   const [orderResult, setOrderResult] = useState<{
     id: string;
     orderCode: string;
@@ -48,8 +53,12 @@ export default function OrderModal({
     address: string;
     totalPrice: number;
   } | null>(null);
-
   const [copied, setCopied] = useState(false);
+
+  // Native <dialog>: focus trap, Esc to close and the backdrop come from the browser.
+  useEffect(() => {
+    if (isOpen) dialogRef.current?.showModal();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -104,7 +113,7 @@ export default function OrderModal({
         totalPrice: Number(data.totalPrice || totalPrice),
       });
     } catch {
-      setError("Network connection issue. Please check your internet and retry.");
+      setError("Network problem. Check your internet and try again.");
     } finally {
       setLoading(false);
     }
@@ -118,257 +127,219 @@ export default function OrderModal({
     }
   };
 
-  const handleTrack = () => {
-    if (orderResult) {
-      router.push(`/track/${orderResult.id}`);
-    }
-  };
-
   const handleReset = () => {
     setOrderResult(null);
     setPhone("");
     setAddress("");
     setName("");
+    setError(null);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 select-none">
-      {/* Dimmed backdrop */}
-      <div
-        onClick={() => !loading && handleReset()}
-        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-      />
-
-      {/* Modal Dialog */}
-      <div className="relative bg-white border border-[#E2E8F0] rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden text-[#0F172A] z-10 animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F8FAFC]">
-          <div>
-            <h2 className="text-base font-extrabold text-[#0F172A]">
-              {orderResult ? "Order Confirmed!" : "Complete Your 3D Print Order"}
-            </h2>
-            <p className="text-xs text-[#64748B] mt-0.5">
-              {orderResult
-                ? "Your custom fabrication order is now in the print queue."
-                : "Enter your phone number & address to generate your order."}
-            </p>
-          </div>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="order-title"
+      onCancel={(e) => {
+        e.preventDefault(); // Esc: close through our own reset, never mid-submit
+        if (!loading) handleReset();
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !loading) handleReset(); // click on the backdrop
+      }}
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl bg-surface text-primary-navy p-0 shadow-2xl backdrop:bg-primary-navy/50 backdrop:backdrop-blur-sm"
+    >
+      <div className="p-6 sm:p-7">
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <h2 id="order-title" className="text-xl font-bold">
+            {orderResult ? "Order placed" : "Where should we deliver?"}
+          </h2>
           <button
             type="button"
             onClick={handleReset}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-[#E2E8F0] transition-colors cursor-pointer"
+            disabled={loading}
+            aria-label="Close"
+            className="-mr-2 -mt-1 w-11 h-11 rounded-lg flex items-center justify-center text-secondary-slate hover:text-primary-navy hover:bg-surface-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-navy/30"
           >
-            <FontAwesomeIcon icon={faXmark} className="text-sm" />
+            <FontAwesomeIcon icon={faXmark} />
           </button>
         </div>
 
         {orderResult ? (
-          /* ── SUCCESS VIEW: SHOW ORDER ID & DETAILS ── */
-          <div className="p-6 space-y-5">
-            <div className="w-14 h-14 rounded-full bg-[#059669]/10 text-[#059669] flex items-center justify-center mx-auto text-2xl font-bold shadow-xs">
-              <FontAwesomeIcon icon={faCheck} />
-            </div>
-
-            <div className="text-center space-y-1">
-              <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                Your Official Tracking ID
-              </span>
+          <div className="space-y-6">
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-success/15 text-tertiary-sage flex items-center justify-center mx-auto text-xl">
+                <FontAwesomeIcon icon={faCheck} />
+              </div>
+              <p className="text-sm text-secondary-slate">Your order code</p>
               <div className="flex items-center justify-center gap-2">
-                <span className="text-2xl font-black font-mono text-[#0F172A] tracking-tight bg-[#F1F5F9] px-4 py-1.5 rounded-xl border border-[#CBD5E1]">
-                  #{orderResult.orderCode}
-                </span>
+                <span className="text-2xl font-bold font-mono tracking-tight">{orderResult.orderCode}</span>
                 <button
                   type="button"
                   onClick={handleCopyId}
-                  title="Copy Order ID"
-                  className="px-2.5 py-2 rounded-lg bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-xs font-semibold text-[#0F172A] transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                  className="h-9 px-3 rounded-lg border border-border hover:bg-bg text-sm font-medium inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-xs" />
-                  <span>{copied ? "Copied!" : "Copy"}</span>
+                  {copied ? "Copied" : "Copy"}
                 </button>
               </div>
+              <p className="text-sm text-secondary-slate" aria-live="polite">
+                Save this code to track your order. We&apos;ll call <strong className="text-primary-navy">{orderResult.phone}</strong> before delivery.
+              </p>
             </div>
 
-            {/* Summary details */}
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-xs space-y-2.5">
-              <div className="flex justify-between items-center pb-2 border-b border-[#E2E8F0]">
-                <span className="text-[#64748B]">Item Ordered:</span>
-                <span className="font-bold text-[#0F172A]">
-                  &quot;{customText}&quot; ({selectedStyle?.name ?? "Custom Key"}) × {quantity}
-                </span>
+            <dl className="text-sm divide-y divide-border border-y border-border">
+              <div className="flex justify-between gap-4 py-3">
+                <dt className="text-secondary-slate">Item</dt>
+                <dd className="font-medium text-right">
+                  &ldquo;{oneLine(customText)}&rdquo; × {quantity}
+                </dd>
               </div>
-              <div className="flex justify-between items-center pb-2 border-b border-[#E2E8F0]">
-                <span className="text-[#64748B]">Contact Phone:</span>
-                <span className="font-bold text-[#0F172A] font-mono">{orderResult.phone}</span>
+              <div className="flex justify-between gap-4 py-3">
+                <dt className="text-secondary-slate">Pay on delivery</dt>
+                <dd className="font-semibold">৳{orderResult.totalPrice.toFixed(2)}</dd>
               </div>
-              <div className="flex justify-between items-start pb-2 border-b border-[#E2E8F0]">
-                <span className="text-[#64748B] shrink-0">Delivery Address:</span>
-                <span className="font-medium text-[#0F172A] text-right pl-4">
-                  {orderResult.address}
-                </span>
-              </div>
-              <div className="flex justify-between items-center pt-1 font-bold text-sm">
-                <span>Total Amount Payable (COD):</span>
-                <span className="font-mono text-[#059669]">৳{orderResult.totalPrice.toFixed(2)}</span>
-              </div>
-            </div>
+            </dl>
 
-            <p className="text-[11px] text-[#64748B] text-center leading-relaxed">
-              We will contact you via phone/SMS at <strong className="text-[#0F172A]">{orderResult.phone}</strong> before dispatching your package.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleTrack}
-                className="h-11 rounded-xl bg-[#0F172A] hover:bg-[#020617] text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-              >
-                <span>Track Order Pipeline</span>
-                <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
-              </button>
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={handleReset}
-                className="h-11 rounded-xl bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs transition-colors cursor-pointer"
+                className="h-12 rounded-xl border border-border hover:bg-bg font-semibold text-sm transition-colors cursor-pointer"
               >
-                Back to Studio
+                Done
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/track/${orderResult.id}`)}
+                className="h-12 rounded-xl bg-primary-navy hover:bg-primary-navy-hover text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                Track order
+                <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
               </button>
             </div>
           </div>
         ) : (
-          /* ── ORDER INPUT FORM ── */
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            {/* Visual Specs Snippet */}
-            <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between gap-3">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {/* What they're ordering */}
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-bg">
               <div className="flex items-center gap-3 min-w-0">
-                {/* Two-tone mini preview */}
-                <div
-                  className="w-9 h-9 rounded-lg border border-black/15 relative overflow-hidden shrink-0 shadow-2xs"
+                <span
+                  aria-hidden
+                  className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center border border-black/10"
                   style={{ backgroundColor: selectedBaseColor?.hexCode ?? "#111111" }}
                 >
-                  <div
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-black/20"
+                  <span
+                    className="w-4 h-4 rounded-full border border-black/10"
                     style={{ backgroundColor: selectedTextColor?.hexCode ?? "#FF6600" }}
                   />
-                </div>
+                </span>
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-[#0F172A] truncate">
-                    &quot;{customText}&quot;
-                  </div>
-                  <div className="text-[11px] text-[#64748B] truncate">
-                    {selectedTextColor?.name} text on {selectedBaseColor?.name} plate
+                  <div className="font-semibold truncate">&ldquo;{oneLine(customText)}&rdquo;</div>
+                  <div className="text-xs text-secondary-slate truncate">
+                    {selectedTextColor?.name} on {selectedBaseColor?.name}
                   </div>
                 </div>
               </div>
 
-              {/* Quantity Selector */}
-              <div className="flex items-center gap-2 shrink-0 bg-white border border-[#E2E8F0] rounded-lg p-1">
+              <div role="group" aria-label="Quantity" className="flex items-center shrink-0 rounded-lg border border-border bg-surface">
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="w-6 h-6 rounded flex items-center justify-center font-bold text-xs hover:bg-[#F1F5F9] cursor-pointer"
+                  disabled={quantity <= 1}
+                  aria-label="Decrease quantity"
+                  className="w-10 h-10 flex items-center justify-center disabled:opacity-30 cursor-pointer"
                 >
-                  <FontAwesomeIcon icon={faMinus} className="text-[10px]" />
+                  <FontAwesomeIcon icon={faMinus} className="text-xs" />
                 </button>
-                <span className="text-xs font-bold font-mono px-1">{quantity}</span>
+                <span className="w-6 text-center text-sm font-semibold tabular-nums" aria-live="polite">
+                  {quantity}
+                </span>
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.min(20, q + 1))}
-                  className="w-6 h-6 rounded flex items-center justify-center font-bold text-xs hover:bg-[#F1F5F9] cursor-pointer"
+                  disabled={quantity >= 20}
+                  aria-label="Increase quantity"
+                  className="w-10 h-10 flex items-center justify-center disabled:opacity-30 cursor-pointer"
                 >
-                  <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
+                  <FontAwesomeIcon icon={faPlus} className="text-xs" />
                 </button>
               </div>
             </div>
 
-            {/* Phone Number Field */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#0F172A] uppercase tracking-wider flex items-center justify-between">
-                <span>Phone Number *</span>
-                <span className="text-[10px] text-[#059669] font-normal lowercase">Required for delivery</span>
+            <div className="space-y-2">
+              <label htmlFor="order-phone" className="block text-sm font-semibold">
+                Phone number
               </label>
               <input
+                id="order-phone"
                 type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 required
+                autoFocus
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. 01700-000000 / 01800-000000"
-                className="w-full h-11 px-3.5 rounded-xl border border-[#CBD5E1] bg-white text-base sm:text-sm text-[#0F172A] font-medium placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A] focus:ring-2 focus:ring-[#0F172A]/10 transition-all font-mono"
+                placeholder="01700-000000"
+                className={`${fieldClass} h-12`}
               />
             </div>
 
-            {/* Delivery Address Field */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#0F172A] uppercase tracking-wider flex items-center justify-between">
-                <span>Full Delivery Address *</span>
-                <span className="text-[10px] text-[#64748B] font-normal lowercase">Home / Office</span>
+            <div className="space-y-2">
+              <label htmlFor="order-address" className="block text-sm font-semibold">
+                Delivery address
               </label>
               <textarea
+                id="order-address"
                 required
                 rows={2}
+                autoComplete="street-address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="House #, Road #, Area, City (e.g. House 14, Road 5, Dhanmondi, Dhaka)"
-                className="w-full p-3 rounded-xl border border-[#CBD5E1] bg-white text-base sm:text-sm text-[#0F172A] font-medium placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A] focus:ring-2 focus:ring-[#0F172A]/10 transition-all resize-none"
+                placeholder="House, road, area, city"
+                className={`${fieldClass} py-3 resize-none`}
               />
             </div>
 
-            {/* Customer Name (Optional) */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#0F172A] uppercase tracking-wider">
-                Recipient Name <span className="text-[#94A3B8] font-normal">(Optional)</span>
+            <div className="space-y-2">
+              <label htmlFor="order-name" className="block text-sm font-semibold">
+                Name <span className="font-normal text-secondary-slate">(optional)</span>
               </label>
               <input
+                id="order-name"
                 type="text"
+                autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Your name or recipient name"
-                className="w-full h-10 px-3.5 rounded-xl border border-[#CBD5E1] bg-white text-base sm:text-sm text-[#0F172A] font-medium placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F172A] focus:ring-2 focus:ring-[#0F172A]/10 transition-all"
+                className={`${fieldClass} h-12`}
               />
-            </div>
-
-            {/* Total price & Cash on Delivery note */}
-            <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between">
-              <div>
-                <div className="text-base font-extrabold text-[#0F172A] font-mono leading-tight">
-                  ৳{totalPrice.toFixed(2)}
-                </div>
-                <span className="text-[10px] text-[#059669] font-medium inline-flex items-center gap-1">
-                  <FontAwesomeIcon icon={faCheck} className="text-[9px]" />
-                  <span>Cash on Delivery Available</span>
-                </span>
-              </div>
-
-              <div className="text-[11px] text-[#64748B] font-medium text-right">
-                Includes split ring & jump ring
-              </div>
             </div>
 
             {error && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-600">
+              <p role="alert" className="text-sm font-medium text-error-ink flex items-start gap-2">
+                <FontAwesomeIcon icon={faCircleExclamation} className="mt-0.5" />
                 {error}
-              </div>
+              </p>
             )}
 
-            {/* Submit Action */}
             <button
               type="submit"
               disabled={loading || !phone.trim() || !address.trim()}
-              className="w-full h-12 rounded-xl bg-[#0F172A] hover:bg-[#020617] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-12 rounded-xl bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-base transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-navy/25"
             >
               {loading ? (
-                <span>Generating Order ID…</span>
-              ) : (
                 <>
-                  <span>Confirm Order (৳{totalPrice.toFixed(2)})</span>
-                  <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+                  <FontAwesomeIcon icon={faSpinner} spin />
+                  Placing order…
                 </>
+              ) : (
+                <>Place order · ৳{totalPrice.toFixed(2)}</>
               )}
             </button>
+            <p className="text-xs text-center text-secondary-slate">Cash on delivery. Keyring included.</p>
           </form>
         )}
       </div>
-    </div>
+    </dialog>
   );
 }

@@ -4,14 +4,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { FONT_STYLE_OPTIONS } from "@/types";
+import { keychainText, lineLimit, MAX_LINE_CHARS, MAX_LINES } from "@/lib/keychain-text";
+
+const FONT_IDS = new Set(FONT_STYLE_OPTIONS.map((f) => f.id));
 
 // ─── Zod validation schema ────────────────────────────────────
 const CreateOrderSchema = z.object({
-  customText: z.string().min(1, "Custom text is required").max(60),
+  customText: z
+    .string()
+    .min(1, "Custom text is required")
+    .refine((t) => t.split(/\r?\n/).filter((l) => l.trim()).length > 0, "Custom text is required")
+    .refine(
+      (t) => t.split(/\r?\n/).filter((l) => l.trim()).length <= MAX_LINES,
+      `At most ${MAX_LINES} lines`
+    )
+    .refine(
+      (t) => t.split(/\r?\n/).every((l) => l.trim().length <= MAX_LINE_CHARS),
+      `At most ${MAX_LINE_CHARS} characters per line`
+    ),
   styleId: z.string().min(1, "Style is required"),
   colorId: z.string().min(1, "Text color is required"),
   baseColorId: z.string().optional().nullable(),
-  fontStyle: z.string().optional().default("helvetiker_bold"),
+  // Must be a known font: the STL generator turns this into a file path.
+  fontStyle: z
+    .string()
+    .refine((id) => FONT_IDS.has(id), "Unknown font")
+    .optional()
+    .default("helvetiker_bold"),
   quantity: z.number().int().min(1).max(20).default(1),
   customerName: z.string().max(100).optional().default("Customer"),
   customerEmail: z.string().email().optional().or(z.literal("")),
@@ -57,6 +77,16 @@ export async function POST(req: NextRequest) {
       where: { id: data.styleId },
     });
 
+    // The admin "Lines" setting for this style may allow fewer than 3 lines.
+    const limit = lineLimit(style.config);
+    if (data.customText.split(/\r?\n/).filter((l) => l.trim()).length > limit) {
+      return NextResponse.json(
+        { error: `This product allows at most ${limit} line${limit > 1 ? "s" : ""} of text.` },
+        { status: 422 }
+      );
+    }
+    const customText = keychainText(data.customText, limit); // stored exactly as it will print
+
     const unitPrice = Number(style.basePrice);
     const totalPrice = unitPrice * data.quantity;
 
@@ -80,7 +110,7 @@ export async function POST(req: NextRequest) {
             colorId: data.colorId,
             baseColorId: data.baseColorId || null,
             fontStyle: data.fontStyle || "helvetiker_bold",
-            customText: data.customText,
+            customText,
             quantity: data.quantity,
             unitPrice,
           },

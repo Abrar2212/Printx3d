@@ -59,19 +59,20 @@ printx3d/
 │   │       └── webhooks/route.ts    # Payment gateway webhook
 │   ├── components/
 │   │   ├── 3d/                      # Three.js / R3F Canvas components
-│   │   │   ├── StudioCanvas.tsx     # 3D viewport & lighting
-│   │   │   ├── TextMesh.tsx         # Extruded 3D name model
-│   │   │   └── FilamentMaterial.tsx # Shader/Material mapping for colors
+│   │   │   └── StudioCanvas.tsx     # Viewport, lighting, and KeychainMesh (contour plate + embossed text + polymer textures)
 │   │   ├── customizer/              # UI Controls
+│   │   │   ├── CustomizerStudio.tsx # Customizer shell, hosts StudioCanvas
 │   │   │   ├── TextInput.tsx        # Name input field
-│   │   │   ├── StyleSelector.tsx    # Font & stand selector
+│   │   │   ├── FontStyleSelector.tsx
+│   │   │   ├── StyleSelector.tsx    # Stand/attachment selector
 │   │   │   ├── ColorPicker.tsx      # Filament color swatch picker
-│   │   │   └── PriceSummary.tsx     # Dynamic price calculator
+│   │   │   └── ColorDuoPicker.tsx   # Text + base color pair
 │   │   ├── admin/                   # Admin queue components
 │   │   └── ui/                      # Reusable components (Buttons, Modals, Cards)
 │   ├── lib/
 │   │   ├── db.ts                    # Database client instance (Prisma/Drizzle)
-│   │   ├── 3d-generator.ts          # STL/Mesh generation helpers
+│   │   ├── keychain-geometry.ts     # Shared plate + text geometry (preview and STL)
+│   │   ├── stl-generator.ts         # Server-side print-ready STL export
 │   │   └── utils.ts                 # Formatting & helpers
 │   ├── types/                       # Shared TypeScript interfaces & types
 │   │   ├── index.ts
@@ -154,9 +155,10 @@ erDiagram
 
 ### 5.1 Customizer & 3D Preview Flow
 1. User enters text in the client UI.
-2. Three.js `FontLoader` loads a vector `typeface.json` font.
-3. `TextGeometry` extrudes the name into a 3D mesh with specified bevels, height, and depth.
-4. User selects a color: `MeshStandardMaterial` updates roughness, metalness, and hex color dynamically.
+2. `KeychainMesh` (in `StudioCanvas.tsx`) loads a vector `typeface.json` font with Three.js `FontLoader`.
+3. It traces a contour plate around the letters and extrudes the name on top with `TextGeometry`.
+4. User selects text + base colors: `meshPhysicalMaterial` with procedural polymer/PEI textures updates live.
+   Plate and text geometry live in `lib/keychain-geometry.ts`, shared with `lib/stl-generator.ts`, so the printed STL matches the preview.
 5. User selects an attachment style (e.g., Base Stand, Keychain Ring, Flat Magnet).
 
 ### 5.2 Order Submission Flow
