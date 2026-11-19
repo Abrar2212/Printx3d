@@ -3,7 +3,8 @@ services:
     name: printx3d
     runtime: node
     plan: free
-    buildCommand: npm install && npx prisma generate && npm run build
+    # migrate deploy creates/updates the tables; only applies migrations not yet run
+    buildCommand: npm install && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
