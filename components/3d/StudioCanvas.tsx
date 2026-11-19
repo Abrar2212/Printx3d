@@ -5,7 +5,7 @@ import { OrbitControls, Center } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import * as THREE from "three";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlay, faPause, faRotate, faLockOpen } from "@fortawesome/free-solid-svg-icons";
+import { faPlay, faPause, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import {
@@ -334,16 +334,6 @@ export default function StudioCanvas(props: StudioCanvasProps) {
           className="absolute inset-0 z-[5] touch-pan-y cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-navy/30"
         />
       )}
-      {isPhone && !locked && (
-        <button
-          type="button"
-          onClick={() => setLocked(true)}
-          className="absolute top-3 left-3 z-10 h-7 px-2.5 rounded-lg text-xs font-semibold border bg-white/90 text-primary-navy border-border-subtle shadow-xs backdrop-blur-md flex items-center gap-1.5 cursor-pointer"
-        >
-          <FontAwesomeIcon icon={faLockOpen} className="text-[10px]" />
-          Lock
-        </button>
-      )}
 
       {/* ── Overlay Viewport Controls ── */}
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-10">
@@ -375,13 +365,6 @@ export default function StudioCanvas(props: StudioCanvasProps) {
       </div>
 
       {/* Helpful Hint Pill */}
-      {!locked && (
-        <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 z-10 pointer-events-none flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-sm px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-border text-[10px] sm:text-xs font-medium text-secondary-slate shadow-sm select-none">
-          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-tertiary-sage animate-pulse" />
-          <span>Drag to rotate</span>
-          <span className="hidden lg:inline">· Scroll to zoom</span>
-        </div>
-      )}
     </div>
   );
 }
