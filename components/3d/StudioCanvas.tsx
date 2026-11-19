@@ -1,11 +1,11 @@
 "use client";
 
-import { Canvas, useLoader } from "@react-three/fiber";
+import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import { OrbitControls, Center } from "@react-three/drei";
-import { useMemo, useRef, useState, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import * as THREE from "three";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlay, faPause, faRotate, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faPlay, faPause, faRotate, faLockOpen } from "@fortawesome/free-solid-svg-icons";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import {
@@ -15,6 +15,10 @@ import {
   BASE_DEPTH,
   TEXT_SINK,
 } from "@/lib/keychain-geometry";
+
+const CAMERA_Z = 6.8;
+const CAMERA_FOV = 38;
+const TARGET_Y = 0.25; // the point the camera looks at and orbits around; the keychain is centred on it
 
 interface StudioCanvasProps {
   text: string;
@@ -175,15 +179,16 @@ function KeychainMesh({
   );
   const frontGeometry = useMemo(() => buildKeychainText(font, safeText), [safeText, font]);
 
-  // Measure bounding box of unified baseplate
-  const bbox = baseGeometry.boundingBox || new THREE.Box3();
-  const rawModelWidth = Math.max(bbox.max.x - bbox.min.x, 0.1);
-
-  // Adaptive auto-scale:
-  // - Target display width: 2.1 units (clean, realistic product size).
-  // - Clamped to max 0.32 so short words stay small and delicate.
-  const targetDisplayWidth = 2.1;
-  const scale = Math.min(0.32, targetDisplayWidth / rawModelWidth);
+  // Fill the preview: scale the keychain to the area the camera sees, leaving room for the buttons.
+  const size = useThree((s) => s.size);
+  if (!baseGeometry.boundingBox) baseGeometry.computeBoundingBox();
+  const bbox = baseGeometry.boundingBox!;
+  const rawW = Math.max(bbox.max.x - bbox.min.x, 0.1);
+  const rawH = Math.max(bbox.max.y - bbox.min.y, 0.1);
+  const viewH = 2 * CAMERA_Z * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2));
+  const viewW = (viewH * size.width) / Math.max(size.height, 1);
+  const fill = size.width < 640 ? 0.7 : 0.82; // phones: a bit zoomed out
+  const scale = Math.min((fill * viewW) / rawW, (0.62 * viewH) / rawH);
 
   // Textures for authentic 3D printed polymer finish
   const textPolymerTexture = useMemo(() => createPrintPolymerTexture(textColor), [textColor]);
@@ -218,9 +223,15 @@ function KeychainMesh({
   );
 
   return (
+    <>
+    {/* Floor for the soft shadow, just under the keychain whatever its size */}
+    <mesh position={[0, TARGET_Y - (rawH * scale) / 2 - 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[12, 12]} />
+      <shadowMaterial opacity={0.25} />
+    </mesh>
     <Center
       key={`${safeText}-${fontStyle}-${scale.toFixed(4)}`}
-      position={[0, 0.40, 0]}
+      position={[0, TARGET_Y, 0]}
     >
       {/* ── Scaled group: petite display size matching real handheld keychain ── */}
       <group scale={[scale, scale, scale]} position={[0, 0, 0]}>
@@ -235,6 +246,7 @@ function KeychainMesh({
         </mesh>
       </group>
     </Center>
+    </>
   );
 }
 
@@ -243,6 +255,18 @@ export default function StudioCanvas(props: StudioCanvasProps) {
   const [isAutoRotating, setIsAutoRotating] = useState(false);
   const controlsRef = useRef<OrbitControlsType>(null);
 
+  // Phones: the preview sticks to the top of the screen, so a swipe on it must scroll the page.
+  // It stays locked until tapped, and locks again as soon as the page scrolls.
+  // (Client-only component, so window exists on the first render.)
+  const [isPhone] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  const [locked, setLocked] = useState(isPhone);
+  useEffect(() => {
+    if (!isPhone || locked) return;
+    const lock = () => setLocked(true);
+    window.addEventListener("scroll", lock, { passive: true, once: true });
+    return () => window.removeEventListener("scroll", lock);
+  }, [isPhone, locked]);
+
   const handleResetCamera = () => {
     if (controlsRef.current) {
       controlsRef.current.reset();
@@ -250,10 +274,10 @@ export default function StudioCanvas(props: StudioCanvasProps) {
   };
 
   return (
-    <div className="w-full h-full relative select-none touch-none">
+    <div className="w-full h-full relative select-none">
       <Canvas
-        camera={{ position: [0, 0.0, 6.8], fov: 38 }}
-        style={{ width: "100%", height: "100%", background: "#F1F5F9", touchAction: "none" }}
+        camera={{ position: [0, 0, CAMERA_Z], fov: CAMERA_FOV }}
+        style={{ width: "100%", height: "100%", background: "transparent", touchAction: "none" }}
         gl={{
           antialias: true,
           powerPreference: "default",
@@ -278,16 +302,10 @@ export default function StudioCanvas(props: StudioCanvasProps) {
           <KeychainMesh {...props} />
         </Suspense>
 
-        {/* Soft mobile-safe floor shadow (100% crash-proof on mobile GPUs) */}
-        <mesh position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[12, 12]} />
-          <shadowMaterial opacity={0.25} />
-        </mesh>
-
         {/* Orbit Controls: Still by default, centered pivot on model */}
         <OrbitControls
           ref={controlsRef}
-          target={[0, 0.25, 0]}
+          target={[0, TARGET_Y, 0]}
           enablePan={false}
           enableZoom={true}
           zoomSpeed={0.85}
@@ -307,11 +325,25 @@ export default function StudioCanvas(props: StudioCanvasProps) {
         />
       </Canvas>
 
-      {/* Mobile Sticky Lock Indicator */}
-      <div className="lg:hidden absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-primary-navy/85 backdrop-blur-md text-white text-[10px] font-mono px-2 py-1 rounded-md shadow-xs select-none">
-        <FontAwesomeIcon icon={faLock} className="text-[9px] text-[#10B981]" />
-        <span className="font-semibold tracking-wide">3D VIEW LOCKED</span>
-      </div>
+      {/* Locked: a see-through layer over the model takes the touch, so swipes scroll the page */}
+      {locked && (
+        <button
+          type="button"
+          onClick={() => setLocked(false)}
+          aria-label="Unlock the 3D preview to rotate it"
+          className="absolute inset-0 z-[5] touch-pan-y cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-navy/30"
+        />
+      )}
+      {isPhone && !locked && (
+        <button
+          type="button"
+          onClick={() => setLocked(true)}
+          className="absolute top-3 left-3 z-10 h-7 px-2.5 rounded-lg text-xs font-semibold border bg-white/90 text-primary-navy border-border-subtle shadow-xs backdrop-blur-md flex items-center gap-1.5 cursor-pointer"
+        >
+          <FontAwesomeIcon icon={faLockOpen} className="text-[10px]" />
+          Lock
+        </button>
+      )}
 
       {/* ── Overlay Viewport Controls ── */}
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-10">
@@ -343,11 +375,13 @@ export default function StudioCanvas(props: StudioCanvasProps) {
       </div>
 
       {/* Helpful Hint Pill */}
-      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-sm px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-border text-[10px] sm:text-xs font-medium text-secondary-slate shadow-sm select-none">
-        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-tertiary-sage animate-pulse" />
-        <span>Drag to rotate</span>
-        <span className="hidden sm:inline">· Scroll to zoom</span>
-      </div>
+      {!locked && (
+        <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 z-10 pointer-events-none flex items-center gap-1.5 sm:gap-2 bg-white/90 backdrop-blur-sm px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-border text-[10px] sm:text-xs font-medium text-secondary-slate shadow-sm select-none">
+          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-tertiary-sage animate-pulse" />
+          <span>Drag to rotate</span>
+          <span className="hidden lg:inline">· Scroll to zoom</span>
+        </div>
+      )}
     </div>
   );
 }

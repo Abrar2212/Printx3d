@@ -21,10 +21,10 @@ export default function TrackLookupPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg text-primary-navy">
+    <div className="min-h-screen flex flex-col bg-cream text-primary-navy">
       <SiteHeader />
       <main className="flex-1 w-full max-w-sm mx-auto px-4 py-16">
-        <h1 className="text-3xl font-extrabold tracking-tight">Track your order</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight">Track your order</h1>
         <p className="text-secondary-slate mt-2">Enter the code you got when you placed your order.</p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-3" noValidate>
@@ -56,7 +56,7 @@ export default function TrackLookupPage() {
           <button
             type="submit"
             disabled={!code.trim()}
-            className="w-full h-12 rounded-xl bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-navy/25"
+            className="w-full h-12 rounded-full bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
           >
             Track
           </button>

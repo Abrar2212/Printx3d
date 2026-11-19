@@ -20,7 +20,7 @@ import { lineLimit } from "@/lib/keychain-text";
 const StudioCanvas = dynamic(() => import("@/components/3d/StudioCanvas"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex flex-col items-center justify-center text-secondary-slate text-sm gap-3 min-h-[220px] bg-surface-muted">
+    <div className="w-full h-full flex flex-col items-center justify-center text-secondary-slate text-sm gap-3 min-h-[220px]">
       <div className="w-6 h-6 border-2 border-primary-navy border-t-transparent rounded-full animate-spin" />
       <span>Loading 3D preview…</span>
     </div>
@@ -99,20 +99,22 @@ export default function CustomizerStudio({ styles, colors }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-bg text-primary-navy flex flex-col" suppressHydrationWarning>
+    <div className="min-h-screen bg-cream text-primary-navy flex flex-col" suppressHydrationWarning>
       <SiteHeader />
 
       <main className="flex-1">
         <HeroSection onScrollToStudio={scrollToStudio} />
 
         {/* ── 3D Studio ── */}
-        <section id="studio" ref={studioRef} className="scroll-mt-16 py-12 md:py-16">
+        <section id="studio" ref={studioRef} className="scroll-mt-16 py-14 md:py-20">
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight mb-6">Design your keychain</h2>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">Design your keychain</h2>
+            <p className="text-primary-navy/70 mt-2 mb-7">What you see here is exactly what we print.</p>
 
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col lg:flex-row lg:h-[560px]">
+            {/* overflow-hidden only on desktop: on phones it would trap the sticky preview and order bar inside the card */}
+            <div className="bg-surface border border-border rounded-3xl lg:overflow-hidden shadow-xl shadow-primary-navy/5 flex flex-col lg:flex-row lg:h-[600px]">
               {/* Preview stays in view on phones while scrolling the options */}
-              <div className="flex-1 bg-surface-muted h-[240px] sm:h-[320px] lg:h-full sticky top-16 lg:static z-20 border-b lg:border-b-0 lg:border-r border-border">
+              <div className="flex-1 bg-linear-to-b from-brand-tint to-cream h-[320px] sm:h-[380px] lg:h-full sticky top-16 lg:static z-20 overflow-hidden rounded-t-3xl lg:rounded-none border-b lg:border-b-0 lg:border-r border-border">
                 <StudioCanvas
                   text={text || "Key"}
                   textColor={selectedTextColor?.hexCode ?? "#FF6600"}
@@ -153,15 +155,17 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                   <StyleSelector styles={styles} selectedId={selectedStyleId} onSelect={selectStyle} />
                 </div>
 
-                <div className="p-5 sm:px-6 border-t border-border bg-surface flex items-center justify-between gap-4 sticky bottom-0 lg:static">
+                <div className="p-5 sm:px-6 border-t border-border bg-surface flex items-center justify-between gap-4 sticky bottom-0 lg:static z-20 rounded-b-3xl lg:rounded-none">
                   <div>
-                    <div className="text-xl font-extrabold leading-tight">৳{price.toFixed(2)}</div>
-                    <div className="text-xs text-secondary-slate">Keyring included</div>
+                    <div className="font-display text-2xl font-extrabold leading-tight">৳{price.toFixed(2)}</div>
+                    <div className="text-xs font-semibold text-secondary-slate">
+                      Keyring included<span className="hidden sm:inline"> · Pay on delivery</span>
+                    </div>
                   </div>
                   <button
                     onClick={() => setIsOrderModalOpen(true)}
                     disabled={!text.trim() || !selectedStyleId || !selectedTextColorId}
-                    className="h-12 px-6 bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-navy/25"
+                    className="h-12 px-6 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-bold text-base whitespace-nowrap shrink-0 transition-colors flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
                   >
                     Order now
                     <FontAwesomeIcon icon={faArrowRight} className="text-xs" />

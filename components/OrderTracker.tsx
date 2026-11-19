@@ -44,7 +44,7 @@ export default function OrderTracker({ order, statusSteps }: Props) {
   const code = `PX-${order.id.slice(0, 8).toUpperCase()}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg text-primary-navy">
+    <div className="min-h-screen flex flex-col bg-cream text-primary-navy">
       <SiteHeader />
 
       <main className="flex-1 w-full max-w-xl mx-auto px-4 sm:px-6 py-10 space-y-8">
@@ -119,7 +119,7 @@ export default function OrderTracker({ order, statusSteps }: Props) {
         {order.status === "DELIVERED" && (
           <Link
             href="/#studio"
-            className="h-12 w-full rounded-xl bg-primary-navy hover:bg-primary-navy-hover text-white font-semibold flex items-center justify-center transition-colors"
+            className="h-12 w-full rounded-full bg-brand hover:bg-brand-hover text-white font-bold flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
           >
             Design another one
           </Link>

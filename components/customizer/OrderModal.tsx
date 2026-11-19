@@ -147,7 +147,7 @@ export default function OrderModal({
       onClick={(e) => {
         if (e.target === e.currentTarget && !loading) handleReset(); // click on the backdrop
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl bg-surface text-primary-navy p-0 shadow-2xl backdrop:bg-primary-navy/50 backdrop:backdrop-blur-sm"
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-3xl bg-surface text-primary-navy p-0 shadow-2xl backdrop:bg-primary-navy/50 backdrop:backdrop-blur-sm"
     >
       <div className="p-6 sm:p-7">
         <div className="flex items-start justify-between gap-4 mb-6">
@@ -205,14 +205,14 @@ export default function OrderModal({
               <button
                 type="button"
                 onClick={handleReset}
-                className="h-12 rounded-xl border border-border hover:bg-bg font-semibold text-sm transition-colors cursor-pointer"
+                className="h-12 rounded-full border border-border-subtle hover:bg-cream font-bold text-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-navy/20"
               >
                 Done
               </button>
               <button
                 type="button"
                 onClick={() => router.push(`/track/${orderResult.id}`)}
-                className="h-12 rounded-xl bg-primary-navy hover:bg-primary-navy-hover text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                className="h-12 rounded-full bg-brand hover:bg-brand-hover text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
               >
                 Track order
                 <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
@@ -325,7 +325,7 @@ export default function OrderModal({
             <button
               type="submit"
               disabled={loading || !phone.trim() || !address.trim()}
-              className="w-full h-12 rounded-xl bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-base transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-navy/25"
+              className="w-full h-13 rounded-full bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
             >
               {loading ? (
                 <>

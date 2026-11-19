@@ -13,7 +13,8 @@ export default function FontStyleSelector({ selectedId, onSelect }: FontStyleSel
       <span id="font-label" className="block text-sm font-semibold text-primary-navy">
         Font
       </span>
-      <div className="grid grid-cols-3 gap-2">
+      {/* 2 columns wherever the panel is narrow (phones, and the desktop side panel) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2">
         {FONT_STYLE_OPTIONS.map((font) => {
           const isSelected = selectedId === font.id;
           return (
