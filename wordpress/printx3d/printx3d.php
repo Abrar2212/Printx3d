@@ -1,8 +1,9 @@
 <?php
 /**
  * Plugin Name: PrintX3D Customizer
- * Description: 3D keychain preview. Shortcode: [printx3d]. Settings: PrintX3D in the left menu.
+ * Description: 3D keychain designer with WooCommerce cart and STL download. Shortcode: [printx3d]. Settings: PrintX3D in the left menu.
  * Version: 1.0.0
+ * License: GPLv2 or later
  */
 
 if (!defined('ABSPATH')) exit;
@@ -18,6 +19,8 @@ function printx3d_defaults() {
         'config' => ['extrusionDepth' => $depth, 'bevel' => $bevel, 'hasBasePlate' => true, 'hasKeychainLoop' => $loop, 'maxLines' => 3],
     ];
     return [
+        'currency' => '$',
+        'defaultText' => 'Your Name',
         'styles' => [
             $s('style-keychain', 'Custom Contour Keychain', 5.99, 4, 0.5, true),
         ],
@@ -38,8 +41,30 @@ function printx3d_defaults() {
     ];
 }
 
+/** Who may edit colours and products: with WooCommerce, shop managers too; otherwise administrators. */
+function printx3d_cap() {
+    return class_exists('WooCommerce') ? 'manage_woocommerce' : 'manage_options';
+}
+
+/** Fonts shipped in fonts/ (id => display name), written by the build from the font picker's list. */
+function printx3d_fonts() {
+    static $fonts = null;
+    if ($fonts === null) $fonts = json_decode((string) @file_get_contents(__DIR__ . '/fonts/fonts.json'), true) ?: [];
+    return $fonts;
+}
+
+/** With WooCommerce, its currency (the cart and checkout use it); otherwise the plugin setting. */
+function printx3d_currency() {
+    return function_exists('get_woocommerce_currency_symbol')
+        ? html_entity_decode(get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8')
+        : printx3d_settings()['currency'];
+}
+
+require __DIR__ . '/includes/woocommerce.php';
+
 function printx3d_settings() {
-    return get_option(PRINTX3D_OPTION) ?: printx3d_defaults();
+    // + fills in settings added in later versions (e.g. currency) for sites that saved before them
+    return (get_option(PRINTX3D_OPTION) ?: []) + printx3d_defaults();
 }
 
 // ─── Front end: [printx3d] ────────────────────────────────────
@@ -47,12 +72,18 @@ add_shortcode('printx3d', function () {
     $s = printx3d_settings();
     $data = [
         'fontBase' => plugins_url('fonts/', __FILE__),
+        'currency' => printx3d_currency(),
+        'defaultText' => $s['defaultText'],
         'styles' => array_values(array_filter($s['styles'], fn($x) => $x['isActive'])),
         'colors' => array_values(array_filter($s['colors'], fn($x) => $x['inStock'])),
+        // null hides the price bar and "Add to cart" (WooCommerce not active)
+        'cart' => class_exists('WooCommerce')
+            ? ['ajaxUrl' => admin_url('admin-ajax.php'), 'nonce' => wp_create_nonce('printx3d_cart')]
+            : null,
     ];
-    $ver = filemtime(__DIR__ . '/build/customizer.js');
+    $ver = filemtime(__DIR__ . '/build/main.js');
     wp_enqueue_style('printx3d', plugins_url('build/customizer.css', __FILE__), [], $ver);
-    wp_enqueue_script('printx3d', plugins_url('build/customizer.js', __FILE__), [], $ver, true);
+    wp_enqueue_script('printx3d', plugins_url('build/main.js', __FILE__), [], $ver, true);
     wp_add_inline_script('printx3d', 'window.PRINTX3D = ' . wp_json_encode($data) . ';', 'before');
     return '<div class="printx3d-customizer"></div>';
 });
@@ -61,9 +92,11 @@ add_shortcode('printx3d', function () {
 add_action('admin_init', function () {
     register_setting('printx3d', PRINTX3D_OPTION, ['sanitize_callback' => 'printx3d_sanitize']);
 });
+// options.php checks this before saving (default: administrators only)
+add_filter('option_page_capability_printx3d', 'printx3d_cap');
 
 add_action('admin_menu', function () {
-    add_menu_page('PrintX3D', 'PrintX3D', 'manage_options', 'printx3d', 'printx3d_admin_page', 'dashicons-art', 58);
+    add_menu_page('PrintX3D', 'PrintX3D', printx3d_cap(), 'printx3d', 'printx3d_admin_page', 'dashicons-art', 58);
 });
 
 // "Settings" link on the Plugins list row
@@ -74,7 +107,14 @@ add_filter('plugin_action_links_' . plugin_basename(__FILE__), function ($links)
 
 /** Turns the posted form rows into clean settings. Rows with "Delete" ticked or no name are dropped. */
 function printx3d_sanitize($in) {
-    $out = ['colors' => [], 'styles' => []];
+    $currency = mb_substr(sanitize_text_field($in['currency'] ?? ''), 0, 5);
+    $text = mb_substr(sanitize_text_field($in['defaultText'] ?? ''), 0, 12); // one keychain line holds 12 characters
+    $out = [
+        'currency' => $currency !== '' ? $currency : '$',
+        'defaultText' => $text !== '' ? $text : 'Your Name',
+        'colors' => [],
+        'styles' => [],
+    ];
     foreach ((array) ($in['colors'] ?? []) as $r) {
         $name = sanitize_text_field($r['name'] ?? '');
         $hex = sanitize_hex_color($r['hexCode'] ?? '');
@@ -114,7 +154,7 @@ function printx3d_sanitize($in) {
 }
 
 function printx3d_admin_page() {
-    if (!current_user_can('manage_options')) return;
+    if (!current_user_can(printx3d_cap())) return;
     $s = printx3d_settings();
     $o = PRINTX3D_OPTION;
     $blankColor = ['id' => '', 'name' => '', 'hexCode' => '#000000', 'materialType' => 'PLA', 'inStock' => true];
@@ -124,9 +164,33 @@ function printx3d_admin_page() {
     <div class="wrap">
         <h1>PrintX3D</h1>
         <?php settings_errors(); // top-level menu pages don't show "Settings saved" on their own ?>
-        <p>Put <code>[printx3d]</code> on any page to show the 3D studio. Fill in the empty last row to add one.</p>
+        <?php if (!class_exists('WooCommerce')): ?>
+            <div class="notice notice-warning inline"><p>Install and activate the free <strong>WooCommerce</strong> plugin to show prices and an <strong>Add to cart</strong> button. Without it the studio is a preview only.</p></div>
+        <?php endif; ?>
+        <p>Put <code>[printx3d]</code> on any page to show the 3D studio. Fill in the empty last row to add one.
+            Orders appear under WooCommerce → Orders, each with a <strong>Download STL</strong> button.</p>
         <form method="post" action="options.php">
             <?php settings_fields('printx3d'); ?>
+
+            <h2>General</h2>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="printx3d-currency">Currency symbol</label></th>
+                    <td><?php if (class_exists('WooCommerce')): ?>
+                        <strong><?= esc_html(printx3d_currency()) ?></strong>
+                        <input type="hidden" name="<?= $o ?>[currency]" value="<?= esc_attr($s['currency']) ?>">
+                        <p class="description">Uses the WooCommerce currency. Change it in <a href="<?= esc_url(admin_url('admin.php?page=wc-settings')) ?>">WooCommerce → Settings → General</a>.</p>
+                    <?php else: ?>
+                        <input id="printx3d-currency" type="text" name="<?= $o ?>[currency]" value="<?= esc_attr($s['currency']) ?>" maxlength="5" style="width:80px">
+                        <p class="description">Shown before prices, e.g. $, €, £, ৳.</p>
+                    <?php endif; ?></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="printx3d-text">Starting text</label></th>
+                    <td><input id="printx3d-text" type="text" name="<?= $o ?>[defaultText]" value="<?= esc_attr($s['defaultText']) ?>" maxlength="12">
+                        <p class="description">What the keychain says before the customer types (up to 12 characters).</p></td>
+                </tr>
+            </table>
 
             <h2>Colours</h2>
             <table class="widefat striped">
@@ -151,7 +215,7 @@ function printx3d_admin_page() {
 
             <h2>Products</h2>
             <table class="widefat striped">
-                <thead><tr><th>Name</th><th>Price (৳)</th><th>Letter height (depth)</th><th>Bevel</th><th>Lines</th><th>Key loop</th><th>Active</th><th>Delete</th></tr></thead>
+                <thead><tr><th>Name</th><th>Price (<?= esc_html(printx3d_currency()) ?>)</th><th>Letter height (depth)</th><th>Bevel</th><th>Lines</th><th>Key loop</th><th>Active</th><th>Delete</th></tr></thead>
                 <tbody>
                 <?php foreach (array_merge($s['styles'], [$blankStyle]) as $i => $st): $n = "{$o}[styles][$i]"; $cf = $st['config']; ?>
                     <tr>

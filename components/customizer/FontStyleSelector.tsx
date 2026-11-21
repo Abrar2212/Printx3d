@@ -1,13 +1,14 @@
 "use client";
 
-import { FONT_STYLE_OPTIONS } from "@/types";
+import { FONT_STYLE_OPTIONS, type FontStyleOption } from "@/types";
 
 interface FontStyleSelectorProps {
   selectedId: string;
   onSelect: (id: string) => void;
+  options?: FontStyleOption[];
 }
 
-export default function FontStyleSelector({ selectedId, onSelect }: FontStyleSelectorProps) {
+export default function FontStyleSelector({ selectedId, onSelect, options = FONT_STYLE_OPTIONS }: FontStyleSelectorProps) {
   return (
     <div role="group" aria-labelledby="font-label" className="space-y-2">
       <span id="font-label" className="block text-sm font-semibold text-primary-navy">
@@ -15,7 +16,7 @@ export default function FontStyleSelector({ selectedId, onSelect }: FontStyleSel
       </span>
       {/* 2 columns wherever the panel is narrow (phones, and the desktop side panel) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2">
-        {FONT_STYLE_OPTIONS.map((font) => {
+        {options.map((font) => {
           const isSelected = selectedId === font.id;
           return (
             <button

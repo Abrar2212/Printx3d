@@ -21,6 +21,7 @@ export interface FontStyleOption {
   family: string;         // Typeface category (e.g. "Sans", "Serif", "Bubble")
   description: string;    // Helper descriptor (e.g. "Punchy modern display")
   sampleText: string;     // Text sample for preview
+  personalUseOnly?: boolean; // licence forbids redistribution: the plugin build leaves it out
 }
 
 export const FONT_STYLE_OPTIONS: FontStyleOption[] = [
@@ -77,6 +78,7 @@ export const FONT_STYLE_OPTIONS: FontStyleOption[] = [
   // LICENSE: personal use only. Buy the commercial license before selling prints in this font.
   {
     id: "american_captain",
+    personalUseOnly: true, // not shipped in the WordPress plugin
     name: "Captain",
     family: "Condensed Display",
     description: "Tall, narrow all-caps poster lettering",
@@ -85,6 +87,7 @@ export const FONT_STYLE_OPTIONS: FontStyleOption[] = [
   // LICENSE: personal use only (demo). Buy the commercial license before selling prints in this font.
   {
     id: "thunder_script",
+    personalUseOnly: true, // not shipped in the WordPress plugin
     name: "Thunder Script",
     family: "Brush Script",
     description: "Flowing handwritten brush script",

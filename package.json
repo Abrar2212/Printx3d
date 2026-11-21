@@ -14,7 +14,7 @@
     "db:seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "wp:build": "esbuild wordpress/src/main.tsx --bundle --minify --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --outfile=wordpress/printx3d/build/customizer.js && tailwindcss -i wordpress/src/customizer.css -o wordpress/printx3d/build/customizer.css --minify && node -e \"require('fs').cpSync('public/fonts','wordpress/printx3d/fonts',{recursive:true})\""
+    "wp:build": "esbuild wordpress/src/main.tsx wordpress/src/admin.ts --bundle --minify --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --outdir=wordpress/printx3d/build && tailwindcss -i wordpress/src/customizer.css -o wordpress/printx3d/build/customizer.css --minify && node wordpress/copy-fonts.mjs"
   },
   "prisma": {
     "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"

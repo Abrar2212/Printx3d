@@ -9,20 +9,29 @@ import FontStyleSelector from "@/components/customizer/FontStyleSelector";
 import ColorPicker from "@/components/customizer/ColorPicker";
 import ColorDuoPicker from "@/components/customizer/ColorDuoPicker";
 import { lineLimit } from "@/lib/keychain-text";
-import type { Style, FilamentColor } from "@/types";
+import { FONT_STYLE_OPTIONS, type Style, type FilamentColor } from "@/types";
 
-const { styles = [], colors = [] } = (window as unknown as {
-  PRINTX3D: { styles: Style[]; colors: FilamentColor[] };
+interface Cart {
+  ajaxUrl: string;
+  nonce: string;
+}
+
+const { styles = [], colors = [], currency = "$", defaultText = "Your Name", cart = null } = (window as unknown as {
+  PRINTX3D: { styles: Style[]; colors: FilamentColor[]; currency?: string; defaultText?: string; cart?: Cart | null };
 }).PRINTX3D;
+// Personal-use fonts are not shipped with the plugin (see copy-fonts.mjs)
+const fonts = FONT_STYLE_OPTIONS.filter((f) => !f.personalUseOnly);
 
 function Studio() {
-  const [text, setText] = useState("Imran");
+  const [text, setText] = useState(defaultText);
   const [styleId, setStyleId] = useState(styles[0]?.id ?? "");
   const [baseId, setBaseId] = useState((colors.find((c) => c.hexCode === "#111111") ?? colors[0])?.id ?? "");
   const [textId, setTextId] = useState(
     (colors.find((c) => c.hexCode === "#FF6600" || c.hexCode === "#FFD000") ?? colors[1] ?? colors[0])?.id ?? ""
   );
-  const [font, setFont] = useState("helvetiker_bold");
+  const [font, setFont] = useState(fonts[0].id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const style = styles.find((s) => s.id === styleId);
   const textColor = colors.find((c) => c.id === textId);
@@ -32,6 +41,30 @@ function Studio() {
     setStyleId(id);
     const limit = lineLimit(styles.find((s) => s.id === id)?.config);
     setText((t) => t.split("\n").slice(0, limit).join("\n"));
+  };
+
+  // The server re-checks everything and sets the price itself; this only sends the choices.
+  const addToCart = async () => {
+    if (!cart) return;
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("action", "printx3d_add_to_cart");
+      body.append("nonce", cart.nonce);
+      body.append("text", text);
+      body.append("font", font);
+      body.append("style", styleId);
+      body.append("textColor", textId);
+      body.append("baseColor", baseId);
+      const res = await fetch(cart.ajaxUrl, { method: "POST", body, credentials: "same-origin" });
+      const json = (await res.json().catch(() => null)) as { success: boolean; data?: { cartUrl?: string; message?: string } } | null;
+      if (json?.success && json.data?.cartUrl) window.location.href = json.data.cartUrl;
+      else setError(json?.data?.message ?? "Could not add to cart. Please reload the page and try again.");
+    } catch {
+      setError("Could not reach the shop. Check your connection and try again.");
+    }
+    setBusy(false);
   };
 
   return (
@@ -48,9 +81,10 @@ function Studio() {
           hasKeychainLoop={style?.config?.hasKeychainLoop ?? true}
         />
       </div>
-      <aside className="w-full @3xl:w-[420px] overflow-y-auto p-5 sm:p-6 space-y-6">
+      <aside className="w-full @3xl:w-[420px] flex flex-col">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
         <TextInput value={text} onChange={setText} maxLines={lineLimit(style?.config)} />
-        <FontStyleSelector selectedId={font} onSelect={setFont} />
+        <FontStyleSelector selectedId={font} onSelect={setFont} options={fonts} />
         <ColorDuoPicker
           colors={colors}
           selectedBaseColorId={baseId}
@@ -62,7 +96,31 @@ function Studio() {
         />
         <ColorPicker label="Letter colour" colors={colors} selectedId={textId} onSelect={setTextId} />
         <ColorPicker label="Base colour" colors={colors} selectedId={baseId} onSelect={setBaseId} />
-        <StyleSelector styles={styles} selectedId={styleId} onSelect={selectStyle} />
+        <StyleSelector styles={styles} selectedId={styleId} onSelect={selectStyle} currency={currency} />
+        </div>
+        {cart && (
+          <div className="p-5 sm:px-6 border-t border-border">
+            <div className="flex items-center justify-between gap-4">
+              <div className="font-display text-2xl font-extrabold leading-tight">
+                {currency}
+                {(style?.basePrice ?? 0).toFixed(2)}
+              </div>
+              <button
+                type="button"
+                onClick={addToCart}
+                disabled={busy || !text.trim() || !style || !textColor || !baseColor}
+                className="h-12 px-6 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
+              >
+                {busy ? "Adding…" : "Add to cart"}
+              </button>
+            </div>
+            {error && (
+              <p role="alert" className="mt-2 text-sm text-error-ink">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -6,9 +6,10 @@ interface StyleSelectorProps {
   styles: Style[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  currency?: string;
 }
 
-export default function StyleSelector({ styles, selectedId, onSelect }: StyleSelectorProps) {
+export default function StyleSelector({ styles, selectedId, onSelect, currency = "৳" }: StyleSelectorProps) {
   if (styles.length <= 1) return null; // nothing to choose
 
   return (
@@ -39,7 +40,8 @@ export default function StyleSelector({ styles, selectedId, onSelect }: StyleSel
                 <span className="text-sm font-medium text-primary-navy">{style.name}</span>
               </span>
               <span className="text-sm font-semibold text-primary-navy tabular-nums">
-                ৳{style.basePrice.toFixed(2)}
+                {currency}
+                {style.basePrice.toFixed(2)}
               </span>
             </button>
           );
