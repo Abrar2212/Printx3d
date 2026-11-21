@@ -39,22 +39,6 @@ async function main() {
         isActive: true,
       },
     }),
-    prisma.style.upsert({
-      where: { id: "style-wall-sign" },
-      update: {
-        name: "Tactile Wall Plate",
-        basePrice: 19.99,
-        config: { extrusionDepth: 6, bevel: 0.8, hasBasePlate: true, hasKeychainLoop: false },
-      },
-      create: {
-        id: "style-wall-sign",
-        name: "Tactile Wall Plate",
-        fontFamily: "droid_serif_bold",
-        basePrice: 19.99,
-        config: { extrusionDepth: 6, bevel: 0.8, hasBasePlate: true, hasKeychainLoop: false },
-        isActive: true,
-      },
-    }),
   ]);
 
   // ─── Colors / Filaments (Matching Real Two-Tone Keychain Prints) ──

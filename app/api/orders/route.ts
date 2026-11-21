@@ -72,10 +72,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const data = CreateOrderSchema.parse(body);
 
-    // Fetch the style to get the base price
-    const style = await db.style.findUniqueOrThrow({
-      where: { id: data.styleId },
+    // Fetch the style to get the base price; retired products (e.g. Tactile Wall Plate) can't be ordered
+    const style = await db.style.findFirst({
+      where: { id: data.styleId, isActive: true },
     });
+    if (!style) {
+      return NextResponse.json({ error: "This product is no longer available." }, { status: 422 });
+    }
 
     // The admin "Lines" setting for this style may allow fewer than 3 lines.
     const limit = lineLimit(style.config);

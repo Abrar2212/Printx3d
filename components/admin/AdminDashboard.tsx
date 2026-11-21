@@ -235,7 +235,8 @@ export default function AdminDashboard({
   const [earRadius, setEarRadius] = useState<number>(Number(initialConfig.earRadius ?? 0.22));
   const [holeRadius, setHoleRadius] = useState<number>(Number(initialConfig.holeRadius ?? 0.10));
   const [maxLines, setMaxLines] = useState<number>(lineLimit(initialConfig));
-  const [basePrice, setBasePrice] = useState<number>(Number(keychainStyle?.basePrice ?? 5.99));
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, number>>({}); // product id → edited price
+  const [priceSaving, setPriceSaving] = useState<string | null>(null);
   const [defaultFont, setDefaultFont] = useState<string>(keychainStyle?.fontFamily || "helvetiker_bold");
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsToast, setSettingsToast] = useState("");
@@ -454,6 +455,32 @@ export default function AdminDashboard({
     }
   };
 
+  // ─── Product prices: one row per active product (Keychain, Desk Plaque Stand, …) ──
+  const handleSavePrice = async (style: StyleItem) => {
+    const price = priceDrafts[style.id];
+    if (price === undefined || !(price >= 0)) return;
+    setPriceSaving(style.id);
+    try {
+      const res = await fetch(`/api/admin/styles/${style.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ basePrice: price }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = await res.json();
+      setStyles((prev) => prev.map((s) => (s.id === updated.id ? { ...s, basePrice: Number(updated.basePrice) } : s)));
+      setPriceDrafts(({ [style.id]: _saved, ...rest }) => rest);
+      setSettingsToast(`${style.name} price updated to ৳${price.toFixed(2)}.`);
+      setTimeout(() => setSettingsToast(""), 4000);
+    } catch (err) {
+      console.error("Failed to save price:", err);
+      setSettingsToast("");
+      alert(`Could not save the price for ${style.name}.`);
+    } finally {
+      setPriceSaving(null);
+    }
+  };
+
   // ─── Settings Handlers ──────────────────────────────────────
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -466,7 +493,6 @@ export default function AdminDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fontFamily: defaultFont,
-          basePrice: Number(basePrice),
           config: {
             fontSize: Number(fontSize),
             extrusionDepth: Number(textDepth),
@@ -1043,6 +1069,50 @@ export default function AdminDashboard({
               </div>
             )}
 
+            {/* Product prices (outside the settings form: each row saves on its own) */}
+            <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-4">
+              <div>
+                <h2 className="text-sm font-bold text-primary-navy">Product Prices</h2>
+                <p className="text-xs text-secondary-slate">What customers pay for each product, in ৳.</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {styles
+                  .filter((s) => s.isActive)
+                  .map((style) => {
+                    const draft = priceDrafts[style.id];
+                    const value = draft ?? style.basePrice;
+                    const changed = draft !== undefined && draft !== style.basePrice;
+                    return (
+                      <div key={style.id} className="flex flex-wrap items-center gap-3 py-3">
+                        <label htmlFor={`price-${style.id}`} className="flex-1 min-w-40 text-sm font-semibold text-primary-navy">
+                          {style.name}
+                        </label>
+                        <div className="relative w-36">
+                          <span className="absolute left-3 top-2.5 text-sm font-bold text-slate-500 font-mono">৳</span>
+                          <input
+                            id={`price-${style.id}`}
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={value}
+                            onChange={(e) => setPriceDrafts((d) => ({ ...d, [style.id]: parseFloat(e.target.value) || 0 }))}
+                            className="w-full h-10 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSavePrice(style)}
+                          disabled={!changed || priceSaving === style.id}
+                          className="h-10 px-4 bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                        >
+                          {priceSaving === style.id ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
             <form onSubmit={handleSaveSettings} className="space-y-6">
               {/* 3D Sizing & Geometry Parameters Card */}
               <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-6">
@@ -1234,34 +1304,14 @@ export default function AdminDashboard({
               <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-6">
                 <div>
                   <h2 className="text-sm font-bold text-primary-navy">
-                    Pricing &amp; Typography
+                    Typography
                   </h2>
                   <p className="text-xs text-secondary-slate">
-                    Base price and default font style.
+                    Default font style. Prices are set per product above.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Base Price */}
-                  <div>
-                    <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-2">
-                      Base Price (৳)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-2.5 text-sm font-bold text-slate-500 font-mono">
-                        ৳
-                      </span>
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="1"
-                        value={basePrice}
-                        onChange={(e) => setBasePrice(parseFloat(e.target.value) || 0)}
-                        className="w-full h-10 pl-8 pr-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
-                      />
-                    </div>
-                  </div>
-
                   {/* Default Font Style */}
                   <div>
                     <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-2">
