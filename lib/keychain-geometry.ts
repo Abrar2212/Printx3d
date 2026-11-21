@@ -14,12 +14,14 @@ export const TEXT_SINK = 0.008; // letters overlap the plate slightly so they fu
 export { keychainText, MAX_LINES, MAX_LINE_CHARS } from "./keychain-text";
 const LINE_HEIGHT = TEXT_SIZE * 1.2;
 
-const R = 0.18; // plate margin around the letters
+const R = 0.11; // plate margin around the letters (≈ 1.8 mm printed)
 const STEP = 0.015; // outline sampling step
-const EAR_RADIUS = 0.22;
-const HOLE_RADIUS = 0.1;
+const EAR_RADIUS = 0.25; // ≈ 2 mm wall around the hole
+const HOLE_RADIUS = 0.125; // ≈ 4 mm hole printed: fits common split rings
 const EAR_OFFSET = 0.14; // keyring centre, left of the plate edge
 const FILLET = 0.6; // multi-line: radius of the rounded joins between lines (≈ 10 mm printed)
+const NOTCH_DEPTH = 0.07; // single line: notches shallower than this (≈ 1.1 mm) are filled; real height steps are deeper
+const NOTCH_REACH = 30; // samples (≈ 0.45 units) looked at on each side of a notch
 
 type Pt = { x: number; y: number };
 
@@ -39,9 +41,33 @@ interface Part {
   dy: number | null;
 }
 
+const MIN_EDGE = 0.02; // ≈ 0.3 mm printed: below nozzle size, and shorter edges fold the letter bevel
+const PLATE_MIN_EDGE = 0.008; // plate outline: drops duplicate / near-duplicate points
+const MIN_INSIDE_RADIUS = 0.35; // single line: inside corners (gaps between letters) rounded this much (≈ 5.6 mm printed), keeps gaps shallow and the plate bevel from folding
+
+/** Polygon of a glyph path with points closer than MIN_EDGE dropped (curves sampled finely first). */
+function cleanPoints(path: THREE.Path): THREE.Vector2[] {
+  const out: THREE.Vector2[] = [];
+  for (const p of path.getPoints(16)) if (!out.length || p.distanceTo(out[out.length - 1]) >= MIN_EDGE) out.push(p);
+  while (out.length > 3 && out[out.length - 1].distanceTo(out[0]) < MIN_EDGE) out.pop(); // the closing edge too
+  return out;
+}
+
+/**
+ * Glyph shapes rebuilt as clean polygons. Some fonts have edges shorter than the letter bevel
+ * (e.g. inside Captain's "R"); the bevel folds over them and the STL gets non-manifold edges.
+ */
+function cleanShapes(shapes: THREE.Shape[]): THREE.Shape[] {
+  return shapes.map((s) => {
+    const shape = new THREE.Shape(cleanPoints(s));
+    shape.holes = s.holes.map((h) => new THREE.Path(cleanPoints(h)));
+    return shape;
+  });
+}
+
 function layoutLines(font: Font, safeText: string): Line[] {
   const raw = safeText.split("\n").map((text) => {
-    const shapes = font.generateShapes(text, TEXT_SIZE);
+    const shapes = cleanShapes(font.generateShapes(text, TEXT_SIZE));
     let width = 0;
     shapes.forEach((s) => s.getPoints().forEach((p) => (width = Math.max(width, p.x))));
     return { text, shapes, width };
@@ -100,6 +126,22 @@ export function filletInsideCorners(f: number[], step: number, r: number): numbe
 }
 
 /**
+ * Fills shallow notches in a lower envelope (plate above `f`), e.g. where two rounded letter
+ * corners meet: a point is raised to the lower of the two levels found within `reach` samples
+ * on each side, if that is less than `depth` away. Only ever adds plate (result ≤ f).
+ * For an upper envelope negate values in and out.
+ */
+export function fillShallowNotches(f: number[], reach = NOTCH_REACH, depth = NOTCH_DEPTH): number[] {
+  return f.map((v, i) => {
+    let left = v, right = v;
+    for (let j = Math.max(0, i - reach); j < i; j++) left = Math.min(left, f[j]);
+    for (let j = i + 1; j <= Math.min(f.length - 1, i + reach); j++) right = Math.min(right, f[j]);
+    const level = Math.max(left, right);
+    return v - level < depth ? level : v;
+  });
+}
+
+/**
  * Outer offset of the parts at x: highest (up) or lowest point of any part covering x,
  * pushed out by R. A line with a gap at x (e.g. a space) falls back to its own default
  * height, so the plate stays solid between words. NaN where nothing covers x.
@@ -117,7 +159,7 @@ function envelopeAt(parts: Part[], x: number, up: boolean): number {
       }
     }
     if (part.dy !== null) {
-      if (!Number.isFinite(v)) v = part.dy + (up ? 0.6 : -0.16);
+      if (!Number.isFinite(v)) v = part.dy + (up ? 0.6 : -(R - 0.02));
       if (!up && v > part.dy - 0.06) v = part.dy - 0.06;
     }
     if (Number.isFinite(v)) best = up ? Math.max(best, v) : Math.min(best, v);
@@ -163,6 +205,19 @@ function removeLocalLoops(input: Pt[], window = 8): Pt[] {
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /**
+ * Evenly spaced points around a glyph outline or counter. Font paths often leave the last edge
+ * implicit (no segment back to the start), and getSpacedPoints skips it: for a block "I" that
+ * edge is the whole left side, so the plate came out cut into the letter.
+ */
+function outlinePoints(path: THREE.Path, divisions: number): THREE.Vector2[] {
+  const curves = path.curves;
+  const start = curves[0]?.getPoint(0);
+  const end = curves[curves.length - 1]?.getPoint(1);
+  if (start && end && !start.equals(end)) path.closePath();
+  return path.getSpacedPoints(divisions);
+}
+
+/**
  * Index of a point where the outline doubles back (turns more than 150° within `reach`
  * along the outline on each side): the tip of a hair-thin spike or slit, or -1.
  */
@@ -205,6 +260,11 @@ function finishPlate(outline: Pt[], hole: Pt | null): THREE.Shape {
       return { x: 0.25 * a.x + 0.5 * p.x + 0.25 * b.x, y: 0.25 * a.y + 0.5 * p.y + 0.25 * b.y };
     });
   }
+  // Points closer than the plate bevel make it fold over itself: a non-manifold STL
+  const spaced: Pt[] = [];
+  for (const p of clean) if (!spaced.length || dist(p, spaced[spaced.length - 1]) >= PLATE_MIN_EDGE) spaced.push(p);
+  while (spaced.length > 3 && dist(spaced[spaced.length - 1], spaced[0]) < PLATE_MIN_EDGE) spaced.pop();
+  clean = removeSpikes(removeLocalLoops(spaced));
   const plate = new THREE.Shape();
   plate.moveTo(clean[0].x, clean[0].y);
   for (let i = 1; i < clean.length; i++) plate.lineTo(clean[i].x, clean[i].y);
@@ -244,9 +304,9 @@ export function keychainPlateShape(font: Font, safeText: string, hasKeychainLoop
   const parts = lines.map((line) => {
     const pts: THREE.Vector2[] = [];
     line.shapes.forEach((s) => {
-      s.getSpacedPoints(180).forEach((p) => pts.push(new THREE.Vector2(p.x + line.dx, p.y + line.dy)));
+      outlinePoints(s, 180).forEach((p) => pts.push(new THREE.Vector2(p.x + line.dx, p.y + line.dy)));
       s.holes.forEach((h) => {
-        h.getSpacedPoints(100).forEach((p) => pts.push(new THREE.Vector2(p.x + line.dx, p.y + line.dy)));
+        outlinePoints(h, 100).forEach((p) => pts.push(new THREE.Vector2(p.x + line.dx, p.y + line.dy)));
       });
     });
     return samplePart(pts, line.dy);
@@ -316,7 +376,7 @@ function singleLinePlate(font: Font, safeText: string, line: Part, hasKeychainLo
   const firstBox = new THREE.Box2();
   const firstPts: THREE.Vector2[] = [];
   font.generateShapes(safeText[0] || "A", TEXT_SIZE).forEach((s) =>
-    s.getSpacedPoints(150).forEach((p) => {
+    outlinePoints(s, 150).forEach((p) => {
       firstBox.expandByPoint(p);
       firstPts.push(p);
     })
@@ -324,7 +384,7 @@ function singleLinePlate(font: Font, safeText: string, line: Part, hasKeychainLo
   const lastBox = new THREE.Box2();
   const rawLast: THREE.Vector2[] = [];
   font.generateShapes(safeText[safeText.length - 1] || "A", TEXT_SIZE).forEach((s) =>
-    s.getSpacedPoints(150).forEach((p) => {
+    outlinePoints(s, 150).forEach((p) => {
       lastBox.expandByPoint(p);
       rawLast.push(p);
     })
@@ -335,7 +395,8 @@ function singleLinePlate(font: Font, safeText: string, line: Part, hasKeychainLo
   let firstTopPt = firstPts[0];
   let firstBottomPt = firstPts[0];
   for (const p of firstPts) {
-    if (p.y > firstTopPt.y) firstTopPt = p;
+    // highest point, leftmost among equals: a flat top (T, E) must start at its left corner
+    if (p.y > firstTopPt.y + 1e-4 || (Math.abs(p.y - firstTopPt.y) <= 1e-4 && p.x < firstTopPt.x)) firstTopPt = p;
     if (p.x < firstBottomPt.x) firstBottomPt = p;
   }
   let lastRightPt = lastPts[0];
@@ -348,14 +409,22 @@ function singleLinePlate(font: Font, safeText: string, line: Part, hasKeychainLo
   };
   const env = (x: number, up: boolean) => {
     const v = envelopeAt([line], x, up);
-    return Number.isFinite(v) ? v : up ? 0.6 : -0.16;
+    return Number.isFinite(v) ? v : up ? 0.6 : -(R - 0.02);
   };
 
   // 1. Bottom and 2. top envelopes
   const bottomXSamples = samplesFrom(firstBottomPt.x, lastRightPt.x);
-  const smoothLower = smooth(bridge(bottomXSamples.map((x) => env(x, false)), Math.min), 0.2, 0.6);
+  const smoothLower = filletInsideCorners(
+    smooth(fillShallowNotches(bridge(bottomXSamples.map((x) => env(x, false)), Math.min)), 0.2, 0.6),
+    STEP,
+    MIN_INSIDE_RADIUS
+  );
   const topXSamples = samplesFrom(firstTopPt.x, lastRightPt.x);
-  const smoothUpper = smooth(bridge(topXSamples.map((x) => env(x, true)), Math.max), 0.2, 0.6);
+  const smoothUpper = filletInsideCorners(
+    smooth(fillShallowNotches(bridge(topXSamples.map((x) => -env(x, true)), Math.min)), 0.2, 0.6),
+    STEP,
+    MIN_INSIDE_RADIUS
+  ).map((v) => -v);
 
   // Flank: outermost x of `pts` at each height, from the bottom envelope to the top one.
   const stepY = 0.015;

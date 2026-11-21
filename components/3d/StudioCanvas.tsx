@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlay, faPause, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import {
   buildKeychainPlate,
@@ -18,6 +19,9 @@ import {
 
 const CAMERA_Z = 6.8;
 const CAMERA_FOV = 38;
+// WordPress plugin sets window.PRINTX3D.fontBase because fonts live in the plugin folder there
+const FONT_BASE: string =
+  (typeof window !== "undefined" && (window as { PRINTX3D?: { fontBase?: string } }).PRINTX3D?.fontBase) || "/fonts/";
 const TARGET_Y = 0.25; // the point the camera looks at and orbits around; the keychain is centred on it
 
 interface StudioCanvasProps {
@@ -63,10 +67,10 @@ function createPrintPolymerTexture(hexColor: string): THREE.CanvasTexture | null
       const dist = (x + y) % spacing;
       const norm = dist / spacing;
       const bead = Math.sin(norm * Math.PI);
-      const grain = (Math.random() - 0.5) * 0.06;
+      const grain = (Math.random() - 0.5) * 0.03;
 
-      // Realistic polymer sheen: subtle 12% shading across bead crests + micro-grain
-      const factor = 0.90 + bead * 0.14 + grain;
+      // Faint layer lines: 5% shading across bead crests + micro-grain
+      const factor = 0.96 + bead * 0.05 + grain;
       const pr = Math.max(0, Math.min(255, Math.round(r * factor)));
       const pg = Math.max(0, Math.min(255, Math.round(g * factor)));
       const pb = Math.max(0, Math.min(255, Math.round(b * factor)));
@@ -159,6 +163,14 @@ function createPeiTexture(hexColor: string): THREE.CanvasTexture | null {
   return texture;
 }
 
+// Rounded edges shade smoothly instead of as flat strips (a flat strip facing the light shows as a
+// bright line); walls and faces keep sharp corners. Display only: the STL ignores normals.
+function smoothShading(geom: THREE.BufferGeometry): THREE.BufferGeometry {
+  const out = toCreasedNormals(geom, Math.PI / 5);
+  out.computeBoundingBox();
+  return out;
+}
+
 function KeychainMesh({
   text,
   textColor,
@@ -167,17 +179,17 @@ function KeychainMesh({
   hasKeychainLoop = true,
 }: StudioCanvasProps) {
   const safeText = keychainText(text);
-  const fontPath = `/fonts/${fontStyle}.typeface.json`;
+  const fontPath = `${FONT_BASE}${fontStyle}.typeface.json`;
 
   // Load font geometry
   const font = useLoader(FontLoader, fontPath);
 
   // Geometry is shared with lib/stl-generator.ts so the print matches this preview exactly
   const baseGeometry = useMemo(
-    () => buildKeychainPlate(font, safeText, hasKeychainLoop),
+    () => smoothShading(buildKeychainPlate(font, safeText, hasKeychainLoop)),
     [safeText, font, hasKeychainLoop]
   );
-  const frontGeometry = useMemo(() => buildKeychainText(font, safeText), [safeText, font]);
+  const frontGeometry = useMemo(() => smoothShading(buildKeychainText(font, safeText)), [safeText, font]);
 
   // Fill the preview: scale the keychain to the area the camera sees, leaving room for the buttons.
   const size = useThree((s) => s.size);
@@ -213,11 +225,11 @@ function KeychainMesh({
       map: textPolymerTexture ?? undefined,
       color: "#FFFFFF",
       bumpMap: textBumpTexture ?? undefined,
-      bumpScale: 0.010, // Subtle authentic micro-filament relief
-      roughness: 0.28,
+      bumpScale: 0.003, // faint layer-line relief
+      roughness: 0.5, // matte PLA; a glossy coat turned edges into bright streaks
       metalness: 0.03,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.18,
+      clearcoat: 0.08,
+      clearcoatRoughness: 0.6,
     }),
     [textPolymerTexture, textBumpTexture]
   );
@@ -372,6 +384,6 @@ export default function StudioCanvas(props: StudioCanvasProps) {
 // Preload standard default font into browser memory for instant display
 if (typeof window !== "undefined") {
   try {
-    useLoader.preload(FontLoader, "/fonts/helvetiker_bold.typeface.json");
+    useLoader.preload(FontLoader, `${FONT_BASE}helvetiker_bold.typeface.json`);
   } catch {}
 }

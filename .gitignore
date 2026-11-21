@@ -34,3 +34,7 @@ prisma/migrations/**/migration_lock.toml
 
 # graphify (generated)
 graphify-out/
+
+# WordPress plugin build output (npm run wp:build)
+wordpress/printx3d/fonts/
+wordpress/printx3d.zip

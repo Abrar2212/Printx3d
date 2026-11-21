@@ -1,0 +1,18 @@
+/* No Tailwind preflight: it would reset the whole WordPress theme.
+   Reset + utilities are unlayered on purpose: theme CSS is unlayered too, and layered rules always lose to it.
+   The reset is (0,1,0) and comes first, so it beats theme element styles and loses to utilities by order. */
+@import "tailwindcss/theme" layer(theme);
+@import "../../app/theme.css";
+
+.printx3d-customizer { font-family: var(--font-sans); }
+.printx3d-customizer :where(*, *::before, *::after) { box-sizing: border-box; border: 0 solid; }
+.printx3d-customizer :where(button, input, textarea, select) {
+  font: inherit; color: inherit; background: transparent; padding: 0; box-shadow: none;
+  text-transform: none; letter-spacing: normal; border-radius: 0; min-height: 0;
+}
+.printx3d-customizer :where(svg, canvas) { display: block; }
+
+@import "tailwindcss/utilities" source(none);
+@source "../../components/3d";
+@source "../../components/customizer";
+@source "./";

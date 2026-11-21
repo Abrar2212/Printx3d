@@ -5,7 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import * as THREE from "three";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
-import { buildKeychainText, filletInsideCorners, findSpike, keychainPlateShape, keychainText, TEXT_SIZE } from "./keychain-geometry";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { buildKeychainPlate, buildKeychainText, filletInsideCorners, fillShallowNotches, findSpike, keychainPlateShape, keychainText, TEXT_SIZE } from "./keychain-geometry";
 import { lineLimit, oneLine } from "./keychain-text";
 
 const fontsDir = path.join(__dirname, "..", "public", "fonts");
@@ -51,6 +52,23 @@ test("filletInsideCorners rounds a step with the given radius and never removes 
   assert.ok(Math.abs(g[at45] + (r - r / Math.SQRT2)) < 0.02, "follows a circular arc");
 });
 
+test("fillShallowNotches fills small notches, keeps real steps and slopes", () => {
+  const notch = [0, 0, 0, 0.03, 0.03, 0, 0, 0]; // plate above: 0.03 notch up into it
+  assert.deepEqual(fillShallowNotches(notch, 3, 0.04), [0, 0, 0, 0, 0, 0, 0, 0]);
+  const step = [0, 0, 0, 0.3, 0.3, 0.3, 0, 0]; // deep: a real shape, untouched
+  assert.deepEqual(fillShallowNotches(step, 3, 0.04), step);
+  const slope = [0, 0.01, 0.02, 0.03, 0.04];
+  assert.deepEqual(fillShallowNotches(slope, 3, 0.04), slope);
+});
+
+test("single-line plate edge has no notch where letter corners meet (Captain 'Imran')", () => {
+  const top = keychainPlateShape(loadFont("american_captain"), "Imran", true)
+    .getPoints()
+    .filter((p) => p.y > 0.8 && p.x > 0.2 && p.x < 2.3); // straight part of the top edge
+  const ys = top.map((p) => p.y);
+  assert.ok(Math.max(...ys) - Math.min(...ys) < 0.003, `top edge wobbles by ${(Math.max(...ys) - Math.min(...ys)).toFixed(4)}`);
+});
+
 const fonts = ["helvetiker_bold", "droid_serif_bold", "gravity_bold", "american_captain", "thunder_script"];
 const texts = [
   "Imran", "Tommy", "Hello World", "Imran\nHossain", "Imran\noi", "hello\njdk", "Tommy\nJo",
@@ -71,6 +89,19 @@ for (const id of fonts) {
         const p = new THREE.Vector2(pos.getX(i), pos.getY(i));
         assert.ok(inside(p, outline), `${id} ${JSON.stringify(text)}: letter point ${p.x.toFixed(2)},${p.y.toFixed(2)} off the plate`);
       }
+      // every point of every letter outline has plate around it on all four sides (catches the plate
+      // cutting into a letter, e.g. along an outline edge the font leaves implicit)
+      // Single line only: multi-line layout shifts lines; the vertex check above covers those.
+      const m = 0.08;
+      if (!text.includes("\n")) font.generateShapes(text, TEXT_SIZE).forEach((s) => {
+        s.closePath();
+        s.getSpacedPoints(60).forEach((p) => {
+          for (const [dx, dy] of [[m, 0], [-m, 0], [0, m], [0, -m]]) {
+            const q = new THREE.Vector2(p.x + dx, p.y + dy);
+            assert.ok(inside(q, outline), `${id} ${JSON.stringify(text)}: plate edge closer than ${m} to letter at ${p.x.toFixed(2)},${p.y.toFixed(2)}`);
+          }
+        });
+      });
       // the hole is inside the plate with a wall around it (0.04 units ≈ 0.6 mm printed)
       const centre = holes[0].reduce((c, p) => c.add(p), new THREE.Vector2()).divideScalar(holes[0].length);
       for (const p of holes[0]) {
@@ -93,6 +124,23 @@ for (const id of fonts) {
       // no hair-thin spikes or slits (they show up as "wings" and can't print)
       const spike = findSpike(outline);
       assert.equal(spike, -1, `${id} ${JSON.stringify(text)}: spike at ${spike >= 0 ? `${outline[spike].x.toFixed(2)},${outline[spike].y.toFixed(2)}` : ""}`);
+
+      // watertight: every edge joins exactly two triangles, or the slicer sees holes / broken walls.
+      // thunder_script's "f" still folds its bevel in one spot (known; demo font, not for sale).
+      if (id !== "thunder_script") {
+        for (const [part, geom] of [["plate", buildKeychainPlate(font, text, true)], ["letters", buildKeychainText(font, text)]] as const) {
+          const m = mergeVertices(geom.clone().deleteAttribute("normal").deleteAttribute("uv"), 1e-5);
+          const idx = m.index!.array;
+          const edges = new Map<string, number>();
+          for (let i = 0; i < idx.length; i += 3)
+            for (const [a, b] of [[idx[i], idx[i + 1]], [idx[i + 1], idx[i + 2]], [idx[i + 2], idx[i]]]) {
+              const k = a < b ? `${a}_${b}` : `${b}_${a}`;
+              edges.set(k, (edges.get(k) ?? 0) + 1);
+            }
+          const open = [...edges.values()].filter((c) => c !== 2).length;
+          assert.equal(open, 0, `${id} ${JSON.stringify(text)}: ${part} has ${open} broken edges`);
+        }
+      }
 
       // lines stack downwards, one line per row
       const lines = text.split("\n").length;
