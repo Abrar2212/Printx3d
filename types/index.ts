@@ -93,6 +93,65 @@ export const FONT_STYLE_OPTIONS: FontStyleOption[] = [
     description: "Flowing handwritten brush script",
     sampleText: "Thunder",
   },
+  // Added from the owner's font folder. LICENSE: none of these came with a commercial license
+  // (see public/fonts/README.md); buy one before selling prints in them.
+  {
+    id: "bartex",
+    personalUseOnly: true, // not shipped in the WordPress plugin
+    name: "Bartex",
+    family: "Decorative Serif",
+    description: "Playful serif with curly swash numbers",
+    sampleText: "Bartex",
+  },
+  {
+    id: "beachbar_script",
+    personalUseOnly: true,
+    name: "BeachBar",
+    family: "Brush Script",
+    description: "Bold, slanted brush script",
+    sampleText: "Beach",
+  },
+  {
+    id: "cheetah_kick",
+    personalUseOnly: true,
+    name: "Cheetah Kick",
+    family: "Hand Script",
+    description: "Light, bouncy handwritten script",
+    sampleText: "Cheetah",
+  },
+  {
+    id: "dephiana",
+    personalUseOnly: true,
+    name: "Dephiana",
+    family: "Brush Script",
+    description: "Upright, rounded brush script",
+    sampleText: "Dephiana",
+  },
+  {
+    id: "ekamai",
+    personalUseOnly: true,
+    name: "Ekamai",
+    family: "Retro Display",
+    description: "Heavy, rounded retro lettering",
+    sampleText: "Ekamai",
+  },
+  {
+    id: "muctar",
+    personalUseOnly: true,
+    name: "Muctar",
+    family: "Brush Script",
+    description: "Slanted, energetic brush script",
+    sampleText: "Muctar",
+  },
+  // Demo: the digits 0-9 print as a swash line, not numbers
+  {
+    id: "agneya",
+    personalUseOnly: true,
+    name: "Agneya",
+    family: "Brush Script",
+    description: "Dry-brush script (letters only in this demo)",
+    sampleText: "Agneya",
+  },
 ];
 
 // ─── Style / Product ──────────────────────────────────────────

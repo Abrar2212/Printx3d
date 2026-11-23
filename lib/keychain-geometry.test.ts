@@ -8,6 +8,7 @@ import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { buildKeychainPlate, buildKeychainText, DEFAULT_SIZE, findSpike, keychainPlateShape, keychainSize, keychainText, TEXT_SIZE } from "./keychain-geometry";
 import { lineLimit, oneLine } from "./keychain-text";
+import { FONT_STYLE_OPTIONS } from "../types";
 
 const fontsDir = path.join(__dirname, "..", "public", "fonts");
 const loadFont = (id: string) =>
@@ -100,7 +101,8 @@ test("the border setting changes the plate (wider border, edge further from the 
   assert.ok(Math.abs(depth.max.z - (0.3 + 0.024)) < 1e-6, `plate thickness follows the setting, got ${depth.max.z}`);
 });
 
-const fonts = ["helvetiker_bold", "droid_serif_bold", "gravity_bold", "american_captain", "thunder_script"];
+// Every font a customer can pick must give a printable keychain
+const fonts = FONT_STYLE_OPTIONS.map((f) => f.id);
 const texts = [
   "Imran", "Tommy", "Hello World", "Fiji", "jigsaw", "Imran\nHossain", "Imran\noi", "hello\njdk", "Tommy\nJo",
   "Ab\nCd\nEf", "A\nLongername12\nBo", "Hi there\nX", "TOP LINE\nmid\nBottom Line",

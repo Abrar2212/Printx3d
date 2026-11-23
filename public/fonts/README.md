@@ -18,6 +18,21 @@
 #                     Commercial license: http://www.thefontry.com
 #   thunder_script    Thunder Script (demo) by Hasta Type. PERSONAL USE ONLY.
 #                     Commercial license: https://fontbundles.net/hasta-type/211997-thunder-script
+#                     (the font file itself is named "Thunder Demo", designer Salman Mashudi)
+#
+# Added 2026-11 from the owner's font folder. None came with a commercial license; what the
+# font files say is below. Buy a commercial license for each before selling prints in it.
+#   bartex            Bartex by MedRida, 2023. "All Rights Reserved", no license text.
+#   beachbar_script   BeachBar Script Medium by DearType (Veneta Rangelova). "All rights reserved".
+#   cheetah_kick      Cheetah Kick by Typhoon Type (Suthi Srisopha). PERSONAL / NON-PROFIT USE ONLY;
+#                     commercial license: http://www.typhoontype.net/fonts/cheetah-kick-font/
+#   dephiana          Dephiana (DEMO) by Nurf Designs. "NOT ALLOWED FOR COMMERCIAL USE".
+#   ekamai            Ekamai by Schizotype (Dave Rowland). "All rights reserved", no license text.
+#   muctar            Muctar by GROENS. "All rights reserved", no license text.
+#   agneya            Agneya DEMO VERSION by seventhimperium (Cucu Supriyadi). Demo: digits are
+#                     replaced by a swash, so numbers don't print.
+# Not added: Special Season (strokes ≈ 0.2 mm printed, too thin for a 0.4 mm nozzle; breaks the
+# STL) and thunder-demo.otf (the same font as thunder_script).
 #   helvetiker_regular.typeface.json
 #   optimer_regular.typeface.json
 #   gentilis_regular.typeface.json

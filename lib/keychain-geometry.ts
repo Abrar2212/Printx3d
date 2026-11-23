@@ -101,10 +101,14 @@ function cleanPoints(path: THREE.Path): THREE.Vector2[] {
  * (e.g. inside Captain's "R"); the bevel folds over them and the STL gets non-manifold edges.
  */
 function cleanShapes(shapes: THREE.Shape[]): THREE.Shape[] {
-  return shapes.map((s) => {
-    const shape = new THREE.Shape(cleanPoints(s));
-    shape.holes = s.holes.map((h) => new THREE.Path(cleanPoints(h)));
-    return shape;
+  // A contour smaller than MIN_EDGE cleans down to < 3 points: too small to print, and it would
+  // break the outline sampling (e.g. a tiny counter in Muctar), so it is dropped
+  return shapes.flatMap((s) => {
+    const outer = cleanPoints(s);
+    if (outer.length < 3) return [];
+    const shape = new THREE.Shape(outer);
+    shape.holes = s.holes.map(cleanPoints).filter((h) => h.length >= 3).map((h) => new THREE.Path(h));
+    return [shape];
   });
 }
 
@@ -382,7 +386,7 @@ function outerContour(field: Float64Array, w: number, h: number, x0: number, y0:
 }
 
 /**
- * Labels the islands of the grown letters (squared distance ≤ limit) and, if there are several,
+ * Labels the islands of the grown letters (squared distance ≤ limit, in cells) and, if there are several,
  * adds to `mask` baseline bars (each line's rows baseline…baseline + barTop) joining the islands
  * of a line from left to right. An island with no letter in any band (e.g. a detached dot) gets a
  * strip down into the band below it. Returns whether anything was added.
@@ -523,9 +527,10 @@ function contourPlate(lines: Line[], parts: Part[], hasKeychainLoop: boolean, si
   const limit = ((R + MIN_INSIDE) / GRID) ** 2;
   let grown = distanceMap(mask, w, h);
 
-  // Parts that grow into separate islands (words, or a "T" whose bar hangs over a short "o")
-  // are joined by a bar along their line's baseline, each to the next from left to right
-  if (bridgeIslands(mask, grown, limit, w, h, y0, lines.map((l) => l.dy), barTop)) grown = distanceMap(mask, w, h);
+  // Parts whose border (R) doesn't join them (words, or a "T" whose bar hangs over a short "o")
+  // are joined by a bar along their line's baseline, each to the next from left to right.
+  // Judged at R, not R + MIN_INSIDE: the shrink step would pull such a join apart again.
+  if (bridgeIslands(mask, grown, (R / GRID) ** 2, w, h, y0, lines.map((l) => l.dy), barTop)) grown = distanceMap(mask, w, h);
 
   const outside = Uint8Array.from(grown, (d2) => (d2 > limit ? 1 : 0));
   const field = Float64Array.from(distanceMap(outside, w, h), (d2) => Math.sqrt(d2) * GRID - MIN_INSIDE);
