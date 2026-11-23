@@ -15,6 +15,7 @@ import ColorDuoPicker from "./ColorDuoPicker";
 import OrderModal from "./OrderModal";
 import type { Style, FilamentColor, StyleConfig } from "@/types";
 import { lineLimit } from "@/lib/keychain-text";
+import { keychainSize } from "@/lib/keychain-geometry";
 
 // Load 3D canvas only on client (no SSR)
 const StudioCanvas = dynamic(() => import("@/components/3d/StudioCanvas"), {
@@ -121,8 +122,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                   baseColor={selectedBaseColor?.hexCode ?? "#111111"}
                   fontStyle={selectedFontStyle}
                   materialType={selectedTextColor?.materialType ?? "PLA"}
-                  extrusionDepth={selectedStyle?.config?.extrusionDepth ?? 5}
-                  bevel={selectedStyle?.config?.bevel ?? 0.5}
+                  size={keychainSize(selectedStyle?.config)}
                   hasKeychainLoop={selectedStyle?.config?.hasKeychainLoop ?? true}
                 />
               </div>

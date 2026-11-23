@@ -6,7 +6,7 @@ import path from "node:path";
 import * as THREE from "three";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { buildKeychainPlate, buildKeychainText, filletInsideCorners, findSpike, keychainPlateShape, keychainText, TEXT_SIZE } from "./keychain-geometry";
+import { buildKeychainPlate, buildKeychainText, DEFAULT_SIZE, findSpike, keychainPlateShape, keychainSize, keychainText, TEXT_SIZE } from "./keychain-geometry";
 import { lineLimit, oneLine } from "./keychain-text";
 
 const fontsDir = path.join(__dirname, "..", "public", "fonts");
@@ -40,36 +40,65 @@ test("lineLimit reads the admin setting, clamped to 1–3, default 3", () => {
   assert.equal(oneLine("Imran\nHossain"), "Imran / Hossain");
 });
 
-test("filletInsideCorners rounds a step with the given radius and never removes plate", () => {
-  const step = 0.01, r = 0.3;
-  const f = [...Array(100).fill(0), ...Array(100).fill(-1.5)]; // wide line, then a narrower one below
-  const g = filletInsideCorners(f, step, r);
-  g.forEach((v, i) => assert.ok(v <= f[i] + 1e-9, `removed plate at ${i}`));
-  assert.ok(Math.abs(g[20] - 0) < 1e-9, "far from the step: unchanged");
-  assert.ok(Math.abs(g[180] + 1.5) < 1e-9, "below the step: unchanged");
-  assert.ok(Math.abs(g[99] + r) < 0.02, `corner filled down to about -r, got ${g[99]}`);
-  const at45 = 100 - Math.round((r - r / Math.SQRT2) / step);
-  assert.ok(Math.abs(g[at45] + (r - r / Math.SQRT2)) < 0.02, "follows a circular arc");
-});
+/** Distance from each plate edge point (past the keyring ear) to the nearest letter, sorted. */
+function edgeGaps(font: ReturnType<typeof loadFont>, text: string, size = DEFAULT_SIZE): number[] {
+  const lines = text.split("\n").map((t) => font.generateShapes(t, size.textSize));
+  const width = (sh: THREE.Shape[]) => Math.max(...sh.flatMap((s) => s.getPoints().map((p) => p.x)));
+  const widest = Math.max(...lines.map(width));
+  const letters: THREE.Vector2[] = [];
+  lines.forEach((sh, i) =>
+    sh.forEach((s) =>
+      s.closePath().getSpacedPoints(600).forEach((p) => letters.push(new THREE.Vector2(p.x + (widest - width(sh)) / 2, p.y - i * size.textSize * 1.2)))
+    )
+  );
+  const left = Math.min(...letters.map((p) => p.x));
+  return keychainPlateShape(font, text, true, size)
+    .getPoints()
+    .filter((p) => p.x > left + 0.3)
+    .map((p) => Math.min(...letters.map((q) => q.distanceTo(p))))
+    .sort((a, b) => a - b);
+}
 
-// The client's rule: the plate edge is the same distance from the letters everywhere.
-for (const id of ["american_captain", "helvetiker_bold", "gravity_bold"]) {
-  test(`single-line plate edge is equidistant from the letters (${id} "IMRAN")`, () => {
-    const font = loadFont(id);
-    const letters: THREE.Vector2[] = [];
-    font.generateShapes("IMRAN", TEXT_SIZE).forEach((s) => letters.push(...s.closePath().getSpacedPoints(600)));
-    const left = Math.min(...letters.map((p) => p.x));
-    const gaps = keychainPlateShape(font, "IMRAN", true)
-      .getPoints()
-      .filter((p) => p.x > left) // the keyring ear is left of the first letter
-      .map((p) => Math.min(...letters.map((q) => q.distanceTo(p))))
-      .sort((a, b) => a - b);
-    const R = 0.11, pct = (f: number) => gaps[Math.floor(f * (gaps.length - 1))];
-    assert.ok(pct(0) > R - 0.015, `${id}: edge comes within ${pct(0).toFixed(3)} of a letter`);
-    assert.ok(pct(0.05) > R - 0.01 && pct(0.95) < R + 0.015, `${id}: 90% of the edge spans ${pct(0.05).toFixed(3)}–${pct(0.95).toFixed(3)}, expected ${R}`);
-    assert.ok(pct(1) < R + 0.06, `${id}: edge strays ${pct(1).toFixed(3)} from the letters`);
+// The client's rule: the plate edge keeps the same distance (the border) from the letters; only the
+// notches between letters are filled, by at most the inside-corner rounding (0.2).
+for (const [id, text] of [
+  ["american_captain", "IMRAN"],
+  ["helvetiker_bold", "IMRAN"],
+  ["gravity_bold", "IMRAN"],
+  ["helvetiker_bold", "Imran\nHossain"],
+]) {
+  test(`plate edge keeps the border distance from the letters (${id} ${JSON.stringify(text)})`, () => {
+    const gaps = edgeGaps(loadFont(id), text);
+    const R = DEFAULT_SIZE.border, median = gaps[Math.floor(gaps.length / 2)];
+    assert.ok(gaps[0] > R - 0.02, `edge comes within ${gaps[0].toFixed(3)} of a letter (border ${R})`);
+    assert.ok(Math.abs(median - R) < 0.01, `typical edge distance ${median.toFixed(3)}, expected ${R}`);
+    assert.ok(gaps[gaps.length - 1] < R + 0.22, `edge strays ${gaps[gaps.length - 1].toFixed(3)} from the letters`);
   });
 }
+
+test("keychainSize reads the admin settings, ignores out-of-range values, keeps ear and hole printable", () => {
+  assert.deepEqual(keychainSize(undefined), DEFAULT_SIZE);
+  // the old seed stored extrusionDepth: 4 in other units: ignored
+  assert.equal(keychainSize({ extrusionDepth: 4 }).textDepth, DEFAULT_SIZE.textDepth);
+  const s = keychainSize({ fontSize: 1.5, extrusionDepth: 0.25, baseDepth: 0.3, offsetRadius: 0.2, earRadius: 0.2, holeRadius: 0.19 });
+  assert.equal(s.textSize, 1.5);
+  assert.equal(s.textDepth, 0.25);
+  assert.equal(s.baseDepth, 0.3);
+  assert.equal(s.border, 0.2);
+  assert.ok(Math.abs(s.earRadius - 0.25) < 1e-9, "ear grown past the border");
+  assert.ok(s.holeRadius <= s.earRadius - 0.06 + 1e-9, "hole keeps a wall inside the ear");
+});
+
+test("the border setting changes the plate (wider border, edge further from the letters)", () => {
+  const font = loadFont("helvetiker_bold");
+  const wide = { ...DEFAULT_SIZE, border: 0.2, earRadius: 0.3 };
+  const gaps = edgeGaps(font, "IMRAN", wide);
+  assert.ok(Math.abs(gaps[Math.floor(gaps.length / 2)] - 0.2) < 0.01, "typical edge distance follows the setting");
+  const depth = new THREE.Box3().setFromBufferAttribute(
+    buildKeychainPlate(font, "IMRAN", true, { ...DEFAULT_SIZE, baseDepth: 0.3 }).attributes.position as THREE.BufferAttribute
+  );
+  assert.ok(Math.abs(depth.max.z - (0.3 + 0.024)) < 1e-6, `plate thickness follows the setting, got ${depth.max.z}`);
+});
 
 const fonts = ["helvetiker_bold", "droid_serif_bold", "gravity_bold", "american_captain", "thunder_script"];
 const texts = [

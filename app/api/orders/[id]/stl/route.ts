@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generateKeychainSTL } from "@/lib/stl-generator";
+import { keychainSize } from "@/lib/keychain-geometry";
 
 export async function GET(
   req: NextRequest,
@@ -44,7 +45,10 @@ export async function GET(
 
     const customText = item.customText || "KEY";
     const fontStyle = item.fontStyle || "helvetiker_bold";
-    const hasKeychainLoop = !item.style?.name?.toLowerCase().includes("plate");
+    // Same settings the customer's preview used: the product's loop switch and "3D Sizing"
+    const config = (item.style?.config ?? {}) as { hasKeychainLoop?: unknown };
+    const hasKeychainLoop =
+      typeof config.hasKeychainLoop === "boolean" ? config.hasKeychainLoop : !item.style?.name?.toLowerCase().includes("plate");
 
     // Generate physical binary STL
     const stlBuffer = generateKeychainSTL({
@@ -52,6 +56,7 @@ export async function GET(
       fontStyle,
       hasKeychainLoop,
       scale: 16.0,
+      size: keychainSize(item.style?.config),
     });
 
     // Sanitize filename for operating systems and slicers (Bambu Studio, PrusaSlicer, Cura)

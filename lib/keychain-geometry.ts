@@ -5,24 +5,69 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 // Single source of truth for keychain geometry, shared by the 3D preview
 // (components/3d/StudioCanvas.tsx) and the print STL (lib/stl-generator.ts),
 // so the customer prints exactly what they approved. Units are font units;
-// the STL scales them to millimetres.
-export const TEXT_SIZE = 1.2;
-export const BASE_DEPTH = 0.2;
-export const TEXT_DEPTH = 0.18;
+// the STL scales them to millimetres (1 unit = 16 mm).
+
+/** Sizes in font units. The admin "3D Sizing" settings override them per product (keychainSize). */
+export interface KeychainSize {
+  textSize: number; // letter height
+  textDepth: number; // how far the letters stand out
+  baseDepth: number; // plate thickness
+  border: number; // plate edge distance from the letters
+  earRadius: number; // keyring ear
+  holeRadius: number; // keyring hole
+}
+export const DEFAULT_SIZE: KeychainSize = {
+  textSize: 1.2,
+  textDepth: 0.18, // ≈ 2.9 mm
+  baseDepth: 0.2, // ≈ 3.2 mm
+  border: 0.11, // ≈ 1.8 mm
+  earRadius: 0.25, // ≈ 2 mm wall around the hole
+  holeRadius: 0.125, // ≈ 4 mm hole: fits common split rings
+};
+/** Admin setting name (in the style's config) and allowed range for each size. */
+export const SIZE_SETTINGS: Record<keyof KeychainSize, { key: string; min: number; max: number }> = {
+  textSize: { key: "fontSize", min: 0.8, max: 1.8 },
+  textDepth: { key: "extrusionDepth", min: 0.1, max: 0.35 },
+  baseDepth: { key: "baseDepth", min: 0.12, max: 0.4 },
+  border: { key: "offsetRadius", min: 0.06, max: 0.3 },
+  earRadius: { key: "earRadius", min: 0.16, max: 0.4 },
+  holeRadius: { key: "holeRadius", min: 0.06, max: 0.2 },
+};
+
+/**
+ * A product's sizes from its saved settings. A missing or out-of-range value (e.g. the old seed's
+ * extrusionDepth: 4, in other units) falls back to the default, and the ear and hole are kept
+ * printable whatever the sliders say.
+ */
+export function keychainSize(config: unknown): KeychainSize {
+  const saved = (config ?? {}) as Record<string, unknown>;
+  const size = { ...DEFAULT_SIZE };
+  for (const name of Object.keys(SIZE_SETTINGS) as (keyof KeychainSize)[]) {
+    const { key, min, max } = SIZE_SETTINGS[name];
+    const v = Number(saved[key]);
+    if (saved[key] !== undefined && saved[key] !== null && v >= min && v <= max) size[name] = v;
+  }
+  size.earRadius = Math.max(size.earRadius, size.border + 0.05); // the ear must reach past the border
+  size.holeRadius = Math.min(size.holeRadius, size.earRadius - 0.06); // ≈ 1 mm wall around the hole
+  return size;
+}
+
+/** The reverse of keychainSize: sizes under their admin setting names, for saving in a style's config. */
+export function sizeConfig(size: KeychainSize): Record<string, number> {
+  return Object.fromEntries((Object.keys(SIZE_SETTINGS) as (keyof KeychainSize)[]).map((name) => [SIZE_SETTINGS[name].key, size[name]]));
+}
+
+export const TEXT_SIZE = DEFAULT_SIZE.textSize;
+export const BASE_DEPTH = DEFAULT_SIZE.baseDepth;
+export const TEXT_DEPTH = DEFAULT_SIZE.textDepth;
 export const TEXT_SINK = 0.008; // letters overlap the plate slightly so they fuse into one solid
 
 export { keychainText, MAX_LINES, MAX_LINE_CHARS } from "./keychain-text";
-const LINE_HEIGHT = TEXT_SIZE * 1.2;
 
-const R = 0.11; // plate margin around the letters (≈ 1.8 mm printed)
-const STEP = 0.015; // outline sampling step
-const EAR_RADIUS = 0.25; // ≈ 2 mm wall around the hole
-const HOLE_RADIUS = 0.125; // ≈ 4 mm hole printed: fits common split rings
 const EAR_OFFSET = 0.14; // keyring centre, left of the plate edge
-const FILLET = 0.6; // multi-line: radius of the rounded joins between lines (≈ 10 mm printed)
-const GRID = 0.01; // single line: distance-map cell (≈ 0.16 mm printed)
-const MIN_INSIDE = 0.04; // single line: inside corners rounded this much (> plate bevel 0.02, so it can't fold)
-const BAR_TOP = 0.5; // single line: a gap between words is bridged by a bar from the baseline up to here
+const GRID = 0.01; // distance-map cell (≈ 0.16 mm printed)
+const MIN_INSIDE = 0.2; // inside corners rounded this much (≈ 3.2 mm): fills the notches between letters; > plate bevel, so it can't fold
+const BAR_TOP = 0.5; // a gap between words is bridged by a bar from the baseline up to here (at text size 1.2)
 
 type Pt = { x: number; y: number };
 
@@ -30,7 +75,7 @@ interface Line {
   text: string;
   shapes: THREE.Shape[];
   dx: number; // horizontal shift that centres this line under the widest one
-  dy: number; // baseline: 0 for the first line, then one LINE_HEIGHT lower per line
+  dy: number; // baseline: 0 for the first line, then 1.2 × text size lower per line
 }
 
 /** Sampled outline points of one line (or of the keyring ear), in final position. */
@@ -38,8 +83,6 @@ interface Part {
   pts: THREE.Vector2[];
   minX: number;
   maxX: number;
-  /** Baseline, for the default heights used at word gaps; null for the keyring ear. */
-  dy: number | null;
 }
 
 const MIN_EDGE = 0.02; // ≈ 0.3 mm printed: below nozzle size, and shorter edges fold the letter bevel
@@ -65,90 +108,20 @@ function cleanShapes(shapes: THREE.Shape[]): THREE.Shape[] {
   });
 }
 
-function layoutLines(font: Font, safeText: string): Line[] {
+function layoutLines(font: Font, safeText: string, textSize: number): Line[] {
   const raw = safeText.split("\n").map((text) => {
-    const shapes = cleanShapes(font.generateShapes(text, TEXT_SIZE));
+    const shapes = cleanShapes(font.generateShapes(text, textSize));
     let width = 0;
     shapes.forEach((s) => s.getPoints().forEach((p) => (width = Math.max(width, p.x))));
     return { text, shapes, width };
   });
   const widest = Math.max(...raw.map((l) => l.width));
-  return raw.map((l, i) => ({ text: l.text, shapes: l.shapes, dx: (widest - l.width) / 2, dy: -i * LINE_HEIGHT }));
+  return raw.map((l, i) => ({ text: l.text, shapes: l.shapes, dx: (widest - l.width) / 2, dy: -i * textSize * 1.2 }));
 }
 
-function samplePart(pts: THREE.Vector2[], dy: number | null): Part {
+function samplePart(pts: THREE.Vector2[]): Part {
   const box = new THREE.Box2().setFromPoints(pts);
-  return { pts, minX: box.min.x, maxX: box.max.x, dy };
-}
-
-// Smoothing passes used for the outline (three passes of a small blur kernel).
-function smooth(values: number[], side: number, centre: number): number[] {
-  let curr = values;
-  for (let pass = 0; pass < 3; pass++) {
-    curr = curr.map((v, i) =>
-      i === 0 || i === curr.length - 1 ? v : side * curr[i - 1] + centre * v + side * curr[i + 1]
-    );
-  }
-  return curr;
-}
-
-// Fills thin gaps (e.g. between letters) by taking the extreme value over ±3 samples.
-function bridge(values: number[], pick: (a: number, b: number) => number): number[] {
-  const span = 3;
-  return values.map((_, i) => {
-    let m = values[i];
-    for (let j = Math.max(0, i - span); j <= Math.min(values.length - 1, i + span); j++) m = pick(m, values[j]);
-    return m;
-  });
-}
-
-/**
- * Rounds inside corners of a lower envelope (plate above `f`, sampled every `step`), such as
- * where a wide line sits on a narrower one, with radius `r`. This is a morphological
- * closing of the plate by a disc: it only ever adds plate (result ≤ f), never removes it.
- * Beyond both ends there is no plate. For an upper envelope negate values in and out.
- */
-export function filletInsideCorners(f: number[], step: number, r: number): number[] {
-  const k = Math.round(r / step);
-  const disc = Array.from({ length: 2 * k + 1 }, (_, j) => Math.sqrt(Math.max(0, r * r - ((j - k) * step) ** 2)));
-  const padded = [...Array(k).fill(Infinity), ...f, ...Array(k).fill(Infinity)]; // all air outside
-  // erode the air below the plate, then dilate it back: sharp air corners don't come back
-  const eroded = padded.map((_, i) => {
-    let m = Infinity;
-    for (let j = -k; j <= k; j++) if (i + j >= 0 && i + j < padded.length) m = Math.min(m, padded[i + j] - disc[j + k]);
-    return m;
-  });
-  return f.map((_, n) => {
-    let m = -Infinity;
-    for (let j = -k; j <= k; j++) m = Math.max(m, eroded[n + k + j] + disc[j + k]);
-    return Math.min(m, f[n]); // never above the input (also when the end is all air)
-  });
-}
-
-/**
- * Outer offset of the parts at x: highest (up) or lowest point of any part covering x,
- * pushed out by R. A line with a gap at x (e.g. a space) falls back to its own default
- * height, so the plate stays solid between words. NaN where nothing covers x.
- */
-function envelopeAt(parts: Part[], x: number, up: boolean): number {
-  let best = up ? -Infinity : Infinity;
-  for (const part of parts) {
-    if (x < part.minX - R || x > part.maxX + R) continue;
-    let v = up ? -Infinity : Infinity;
-    for (const p of part.pts) {
-      const dx = Math.abs(x - p.x);
-      if (dx <= R) {
-        const d = Math.sqrt(Math.max(0, R * R - dx * dx));
-        v = up ? Math.max(v, p.y + d) : Math.min(v, p.y - d);
-      }
-    }
-    if (part.dy !== null) {
-      if (!Number.isFinite(v)) v = part.dy + (up ? 0.6 : -(R - 0.02));
-      if (!up && v > part.dy - 0.06) v = part.dy - 0.06;
-    }
-    if (Number.isFinite(v)) best = up ? Math.max(best, v) : Math.min(best, v);
-  }
-  return Number.isFinite(best) ? best : NaN;
+  return { pts, minX: box.min.x, maxX: box.max.x };
 }
 
 // Where segment pq properly crosses segment rs, or null.
@@ -233,7 +206,7 @@ function removeSpikes(input: Pt[]): Pt[] {
 }
 
 /** Cleans the outline (folds, spikes, small zig-zags) and builds the shape with the keyring hole. */
-function finishPlate(outline: Pt[], hole: Pt | null): THREE.Shape {
+function finishPlate(outline: Pt[], hole: Pt | null, holeRadius: number): THREE.Shape {
   // Light smoothing over the closed outline irons out small zig-zags (they read as
   // "ticks"); it moves the edge only by hundredths of a unit.
   let clean = removeSpikes(removeLocalLoops(outline));
@@ -255,16 +228,21 @@ function finishPlate(outline: Pt[], hole: Pt | null): THREE.Shape {
   plate.closePath();
   if (hole) {
     const path = new THREE.Path();
-    path.absarc(hole.x, hole.y, HOLE_RADIUS, 0, Math.PI * 2, true);
+    path.absarc(hole.x, hole.y, holeRadius, 0, Math.PI * 2, true);
     plate.holes.push(path);
   }
   return plate;
 }
 
 /** Contour baseplate: per-letter silhouette with optional keyring ear + hole, flat back at z = 0. */
-export function buildKeychainPlate(font: Font, safeText: string, hasKeychainLoop: boolean): THREE.ExtrudeGeometry {
-  const geom = new THREE.ExtrudeGeometry(keychainPlateShape(font, safeText, hasKeychainLoop), {
-    depth: BASE_DEPTH,
+export function buildKeychainPlate(
+  font: Font,
+  safeText: string,
+  hasKeychainLoop: boolean,
+  size: KeychainSize = DEFAULT_SIZE
+): THREE.ExtrudeGeometry {
+  const geom = new THREE.ExtrudeGeometry(keychainPlateShape(font, safeText, hasKeychainLoop, size), {
+    depth: size.baseDepth,
     curveSegments: 28,
     bevelEnabled: true,
     bevelThickness: 0.024,
@@ -281,8 +259,13 @@ export function buildKeychainPlate(font: Font, safeText: string, hasKeychainLoop
 }
 
 /** The plate's 2D outline (and keyring hole), before extrusion. */
-export function keychainPlateShape(font: Font, safeText: string, hasKeychainLoop: boolean): THREE.Shape {
-  const lines = layoutLines(font, safeText);
+export function keychainPlateShape(
+  font: Font,
+  safeText: string,
+  hasKeychainLoop: boolean,
+  size: KeychainSize = DEFAULT_SIZE
+): THREE.Shape {
+  const lines = layoutLines(font, safeText, size.textSize);
 
   // Sample every letter outline (and counters) of every line, in final position.
   const parts = lines.map((line) => {
@@ -293,63 +276,10 @@ export function keychainPlateShape(font: Font, safeText: string, hasKeychainLoop
         outlinePoints(h, 100).forEach((p) => pts.push(new THREE.Vector2(p.x + line.dx, p.y + line.dy)));
       });
     });
-    return samplePart(pts, line.dy);
+    return samplePart(pts);
   });
 
-  return lines.length > 1
-    ? multiLinePlate(parts, hasKeychainLoop)
-    : singleLinePlate(lines[0], parts[0], hasKeychainLoop);
-}
-
-/**
- * Several lines: the plate is everything between one bottom and one top envelope, sampled
- * from the keyring on the left to the far right. Being one x-monotone band it can't cross
- * itself, its ends round off by themselves, and shorter or inset lines need no special
- * cases. Inside corners where lines of different length meet are rounded (FILLET).
- */
-function multiLinePlate(lines: Part[], hasKeychainLoop: boolean): THREE.Shape {
-  const all = lines.flatMap((l) => l.pts);
-  const parts = [...lines];
-
-  // Keyring: halfway up the line that reaches furthest left, just outside the plate edge there.
-  let hole: Pt | null = null;
-  if (hasKeychainLoop) {
-    const leftLine = lines.reduce((a, b) => (b.minX < a.minX ? b : a));
-    const box = new THREE.Box2().setFromPoints(leftLine.pts);
-    const earY = (box.min.y + box.max.y) / 2;
-    let edgeX = Infinity;
-    for (const p of all) {
-      const dy = Math.abs(p.y - earY);
-      if (dy <= R) edgeX = Math.min(edgeX, p.x - Math.sqrt(R * R - dy * dy));
-    }
-    if (!Number.isFinite(edgeX)) edgeX = leftLine.minX - R;
-    hole = { x: edgeX - EAR_OFFSET, y: earY };
-    // the ear joins the envelopes as a ring of points; the R offset brings it to EAR_RADIUS
-    const ring = Array.from({ length: 48 }, (_, i) => {
-      const a = (i / 48) * Math.PI * 2;
-      return new THREE.Vector2(hole!.x + Math.cos(a) * (EAR_RADIUS - R), hole!.y + Math.sin(a) * (EAR_RADIUS - R));
-    });
-    parts.push(samplePart(ring, null));
-  }
-
-  const minX = Math.min(...parts.map((p) => p.minX)) - R;
-  const maxX = Math.max(...parts.map((p) => p.maxX)) + R;
-  const xs: number[] = [];
-  for (let x = minX; x <= maxX + 0.0001; x += STEP) xs.push(+x.toFixed(4));
-
-  const rawLower = xs.map((x) => envelopeAt(parts, x, false));
-  const rawUpper = xs.map((x) => envelopeAt(parts, x, true));
-  const keep = xs.map((_, i) => Number.isFinite(rawLower[i]) && Number.isFinite(rawUpper[i]));
-  const X = xs.filter((_, i) => keep[i]);
-
-  let lower = smooth(bridge(rawLower.filter((_, i) => keep[i]), Math.min), 0.2, 0.6);
-  let upper = smooth(bridge(rawUpper.filter((_, i) => keep[i]), Math.max), 0.2, 0.6);
-  lower = filletInsideCorners(lower, STEP, FILLET);
-  upper = filletInsideCorners(upper.map((v) => -v), STEP, FILLET).map((v) => -v);
-
-  const bottom = X.map((x, i) => ({ x, y: Math.min(lower[i], upper[i]) }));
-  const top = X.map((x, i) => ({ x, y: Math.max(lower[i], upper[i]) }));
-  return finishPlate([...bottom, ...top.reverse()], hole);
+  return contourPlate(lines, parts, hasKeychainLoop, size);
 }
 
 /**
@@ -453,13 +383,13 @@ function outerContour(field: Float64Array, w: number, h: number, x0: number, y0:
 
 /**
  * Labels the islands of the grown letters (squared distance ≤ limit) and, if there are several,
- * adds to `mask` a baseline bar (rows 0…BAR_TOP) joining each island's letters to the next one's.
- * An island with no letter in that band (e.g. a detached dot) gets a strip down to it instead.
- * Returns whether anything was added.
+ * adds to `mask` baseline bars (each line's rows baseline…baseline + barTop) joining the islands
+ * of a line from left to right. An island with no letter in any band (e.g. a detached dot) gets a
+ * strip down into the band below it. Returns whether anything was added.
  */
-function bridgeIslands(mask: Uint8Array, grown: Float64Array, limit: number, w: number, h: number, y0: number): boolean {
+function bridgeIslands(mask: Uint8Array, grown: Float64Array, limit: number, w: number, h: number, y0: number, baselines: number[], barTop: number): boolean {
   const label = new Int32Array(w * h).fill(-1);
-  const islands: { lo: number; hi: number; cells: number[] }[] = [];
+  const islands: number[][] = []; // letter cells of each island
   for (let k0 = 0; k0 < w * h; k0++) {
     if (label[k0] >= 0 || grown[k0] > limit) continue;
     const id = islands.length, cells: number[] = [], stack = [k0];
@@ -474,55 +404,76 @@ function bridgeIslands(mask: Uint8Array, grown: Float64Array, limit: number, w: 
           stack.push(n);
         }
     }
-    islands.push({ lo: Infinity, hi: -Infinity, cells });
+    islands.push(cells);
   }
   if (islands.length < 2) return false;
 
-  const bandRows: number[] = [];
-  for (let j = 0; j < h; j++) if (y0 + j * GRID >= 0 && y0 + j * GRID <= BAR_TOP) bandRows.push(j);
-  const band0 = bandRows[0], band1 = bandRows[bandRows.length - 1];
-  for (const isl of islands) {
-    for (const k of isl.cells) {
-      const j = Math.floor(k / w);
-      if (j >= band0 && j <= band1) {
-        isl.lo = Math.min(isl.lo, k % w);
-        isl.hi = Math.max(isl.hi, k % w);
+  const row = (y: number) => Math.round((y - y0) / GRID);
+  const bands = baselines.map((b) => [row(b), row(b + barTop)]);
+  const spans = bands.map(() => [] as { lo: number; hi: number }[]); // per band: each island's columns in it
+  for (const cells of islands) {
+    let inAnyBand = false;
+    bands.forEach(([r0, r1], b) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const k of cells) {
+        const j = Math.floor(k / w);
+        if (j >= r0 && j <= r1) {
+          lo = Math.min(lo, k % w);
+          hi = Math.max(hi, k % w);
+        }
       }
-    }
-    if (isl.lo === Infinity) {
-      // no letter in the band: a strip from its lowest letter cell down into the band
-      const low = isl.cells.reduce((a, b) => (b < a ? b : a));
-      const i = low % w;
-      for (let j = band0; j <= Math.floor(low / w); j++) for (let c = i - 2; c <= i + 2; c++) mask[j * w + c] = 1;
-      isl.lo = isl.hi = i;
+      if (lo !== Infinity) {
+        spans[b].push({ lo, hi });
+        inAnyBand = true;
+      }
+    });
+    if (!inAnyBand) {
+      // a strip from its lowest letter cell down into the nearest band below
+      const low = cells.reduce((a, b) => (b < a ? b : a));
+      const i = low % w, j = Math.floor(low / w);
+      const below = bands.filter(([, r1]) => r1 <= j).sort((a, b) => b[1] - a[1])[0] ?? bands[0];
+      for (let r = below[0]; r <= j; r++) for (let c = i - 2; c <= i + 2; c++) mask[r * w + c] = 1;
     }
   }
-  islands.sort((a, b) => a.lo - b.lo);
-  for (let n = 1; n < islands.length; n++) {
-    const from = Math.min(islands[n - 1].hi, islands[n].lo), to = Math.max(islands[n - 1].hi, islands[n].lo);
-    for (const j of bandRows) for (let i = from; i <= to; i++) mask[j * w + i] = 1;
-  }
+  bands.forEach(([r0, r1], b) => {
+    const s = spans[b].sort((p, q) => p.lo - q.lo);
+    for (let n = 1; n < s.length; n++) {
+      const from = Math.min(s[n - 1].hi, s[n].lo), to = Math.max(s[n - 1].hi, s[n].lo);
+      for (let r = r0; r <= r1; r++) for (let i = from; i <= to; i++) mask[r * w + i] = 1;
+    }
+  });
   return true;
 }
 
 /**
- * One line: the plate edge is the same distance R from the lettering everywhere, like a sticker
- * contour. Built on a distance map of the letters and the keyring ear; where the contour would
- * fall apart (a space between words) a baseline bar bridges it. Counters are filled; inside
- * corners are rounded by MIN_INSIDE.
+ * The plate: its edge is the same distance R from the lettering everywhere, like a sticker
+ * contour. Built on a distance map of the letters and the keyring ear. Between two lines the gap
+ * is filled across the width they share, so the plate is one piece; where the contour would
+ * still fall apart (a space between words) a baseline bar bridges it. Counters are filled;
+ * inside corners are rounded by MIN_INSIDE.
  */
-function singleLinePlate(line: Line, part: Part, hasKeychainLoop: boolean): THREE.Shape {
-  const polys = line.shapes.map((s) => [s.getPoints(), ...s.holes.map((h) => h.getPoints())]);
-  const box = new THREE.Box2().setFromPoints(part.pts);
+function contourPlate(lines: Line[], parts: Part[], hasKeychainLoop: boolean, size: KeychainSize): THREE.Shape {
+  const { border: R, earRadius: EAR_RADIUS } = size;
+  const k = size.textSize / DEFAULT_SIZE.textSize; // heights below are for text size 1.2
+  const barTop = BAR_TOP * k;
+  const polys = lines.flatMap((line) =>
+    line.shapes.map((s) =>
+      [s.getPoints(), ...s.holes.map((h) => h.getPoints())].map((ring) => ring.map((p) => new THREE.Vector2(p.x + line.dx, p.y + line.dy)))
+    )
+  );
+  const box = new THREE.Box2().setFromPoints(parts.flatMap((p) => p.pts));
 
-  // Keyring: halfway up the first letter (kept to the middle band), just outside the plate edge there
+  // Keyring: halfway up the first letter of the line reaching furthest left (kept to the middle
+  // band of that line), just outside the plate edge there
   let hole: Pt | null = null;
   if (hasKeychainLoop) {
-    const boxes = line.shapes.map((s) => new THREE.Box2().setFromPoints(s.getPoints()));
-    const first = boxes.reduce((a, b) => (b.min.x < a.min.x ? b : a));
-    const earY = Math.max(0.48, Math.min(0.65, (first.min.y + first.max.y) / 2));
+    const n = parts.reduce((a, _, i) => (parts[i].minX < parts[a].minX ? i : a), 0);
+    const first = lines[n].shapes
+      .map((s) => new THREE.Box2().setFromPoints(s.getPoints()))
+      .reduce((a, b) => (b.min.x < a.min.x ? b : a));
+    const earY = lines[n].dy + Math.max(0.48 * k, Math.min(0.65 * k, (first.min.y + first.max.y) / 2));
     let edgeX = Infinity;
-    for (const p of part.pts) {
+    for (const p of parts.flatMap((q) => q.pts)) {
       const dy = Math.abs(p.y - earY);
       if (dy <= R) edgeX = Math.min(edgeX, p.x - Math.sqrt(R * R - dy * dy));
     }
@@ -536,7 +487,8 @@ function singleLinePlate(line: Line, part: Part, hasKeychainLoop: boolean): THRE
   const w = Math.ceil((Math.max(box.max.x, hole ? hole.x + EAR_RADIUS : -Infinity) + pad - x0) / GRID) + 1;
   const h = Math.ceil((Math.max(box.max.y, hole ? hole.y + EAR_RADIUS : -Infinity) + pad - y0) / GRID) + 1;
 
-  // 1. What the plate grows from: the letters (each shape even-odd, so counters stay open) and the ear
+  // 1. What the plate grows from: the letters (each shape even-odd, so counters stay open),
+  //    the ear, and the gap between each pair of lines across their shared width
   const mask = new Uint8Array(w * h);
   const fillRow = (j: number, from: number, to: number) => {
     const last = Math.min(w - 1, Math.floor((to - x0) / GRID));
@@ -554,6 +506,12 @@ function singleLinePlate(line: Line, part: Part, hasKeychainLoop: boolean): THRE
       xs.sort((p, q) => p - q);
       for (let k = 0; k + 1 < xs.length; k += 2) fillRow(j, xs[k], xs[k + 1]);
     }
+    // only the gap: from halfway up the lower line's letters to just into the upper line's,
+    // so both lines keep their contour everywhere else
+    for (let n = 1; n < lines.length; n++) {
+      if (y >= lines[n].dy + barTop && y <= lines[n - 1].dy + 0.1 * k)
+        fillRow(j, Math.max(parts[n - 1].minX, parts[n].minX), Math.min(parts[n - 1].maxX, parts[n].maxX));
+    }
     if (hole && Math.abs(y - hole.y) < EAR_RADIUS - R) {
       const dx = Math.sqrt((EAR_RADIUS - R) ** 2 - (y - hole.y) ** 2); // + the R offset = EAR_RADIUS
       fillRow(j, hole.x - dx, hole.x + dx);
@@ -566,22 +524,22 @@ function singleLinePlate(line: Line, part: Part, hasKeychainLoop: boolean): THRE
   let grown = distanceMap(mask, w, h);
 
   // Parts that grow into separate islands (words, or a "T" whose bar hangs over a short "o")
-  // are joined by a bar along the baseline between them, each to the next from left to right
-  if (bridgeIslands(mask, grown, limit, w, h, y0)) grown = distanceMap(mask, w, h);
+  // are joined by a bar along their line's baseline, each to the next from left to right
+  if (bridgeIslands(mask, grown, limit, w, h, y0, lines.map((l) => l.dy), barTop)) grown = distanceMap(mask, w, h);
 
   const outside = Uint8Array.from(grown, (d2) => (d2 > limit ? 1 : 0));
   const field = Float64Array.from(distanceMap(outside, w, h), (d2) => Math.sqrt(d2) * GRID - MIN_INSIDE);
 
   // 3. Trace the edge; every other point (≈ 0.01 apart) is still finer than any printer
   const outline = outerContour(field, w, h, x0, y0).filter((_, i) => i % 2 === 0);
-  return finishPlate(outline, hole);
+  return finishPlate(outline, hole, size.holeRadius);
 }
 
-/** Embossed lettering (all lines, centred), sitting on z = 0; place it at BASE_DEPTH - TEXT_SINK. */
-export function buildKeychainText(font: Font, safeText: string): THREE.BufferGeometry {
-  const parts = layoutLines(font, safeText).map((line) =>
+/** Embossed lettering (all lines, centred), sitting on z = 0; place it at baseDepth - TEXT_SINK. */
+export function buildKeychainText(font: Font, safeText: string, size: KeychainSize = DEFAULT_SIZE): THREE.BufferGeometry {
+  const parts = layoutLines(font, safeText, size.textSize).map((line) =>
     new THREE.ExtrudeGeometry(line.shapes, {
-      depth: TEXT_DEPTH,
+      depth: size.textDepth,
       curveSegments: 32,
       bevelEnabled: true,
       bevelThickness: 0.022,

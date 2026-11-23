@@ -76,8 +76,6 @@ function Studio() {
           baseColor={baseColor?.hexCode ?? "#111111"}
           fontStyle={font}
           materialType={textColor?.materialType ?? "PLA"}
-          extrusionDepth={style?.config?.extrusionDepth ?? 5}
-          bevel={style?.config?.bevel ?? 0.5}
           hasKeychainLoop={style?.config?.hasKeychainLoop ?? true}
         />
       </div>

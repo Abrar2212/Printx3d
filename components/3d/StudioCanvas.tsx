@@ -13,8 +13,9 @@ import {
   buildKeychainPlate,
   buildKeychainText,
   keychainText,
-  BASE_DEPTH,
+  DEFAULT_SIZE,
   TEXT_SINK,
+  type KeychainSize,
 } from "@/lib/keychain-geometry";
 
 const CAMERA_Z = 6.8;
@@ -30,9 +31,8 @@ interface StudioCanvasProps {
   baseColor: string;          // Key contour background plate color
   fontStyle?: string;         // Font ID e.g. "helvetiker_bold"
   materialType?: "PLA" | "PETG" | "TPU";
-  extrusionDepth?: number;
-  bevel?: number;
   hasKeychainLoop?: boolean;
+  size?: KeychainSize; // the product's admin "3D Sizing" settings (keychainSize)
 }
 
 // Helper: convert hex color string to RGB numbers
@@ -177,6 +177,7 @@ function KeychainMesh({
   baseColor,
   fontStyle = "helvetiker_bold",
   hasKeychainLoop = true,
+  size = DEFAULT_SIZE,
 }: StudioCanvasProps) {
   const safeText = keychainText(text);
   const fontPath = `${FONT_BASE}${fontStyle}.typeface.json`;
@@ -186,20 +187,25 @@ function KeychainMesh({
 
   // Geometry is shared with lib/stl-generator.ts so the print matches this preview exactly
   const baseGeometry = useMemo(
-    () => smoothShading(buildKeychainPlate(font, safeText, hasKeychainLoop)),
-    [safeText, font, hasKeychainLoop]
+    () => smoothShading(buildKeychainPlate(font, safeText, hasKeychainLoop, size)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild only when a size value changes, not on every new object
+    [safeText, font, hasKeychainLoop, ...Object.values(size)]
   );
-  const frontGeometry = useMemo(() => smoothShading(buildKeychainText(font, safeText)), [safeText, font]);
+  const frontGeometry = useMemo(
+    () => smoothShading(buildKeychainText(font, safeText, size)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [safeText, font, ...Object.values(size)]
+  );
 
   // Fill the preview: scale the keychain to the area the camera sees, leaving room for the buttons.
-  const size = useThree((s) => s.size);
+  const view = useThree((s) => s.size);
   if (!baseGeometry.boundingBox) baseGeometry.computeBoundingBox();
   const bbox = baseGeometry.boundingBox!;
   const rawW = Math.max(bbox.max.x - bbox.min.x, 0.1);
   const rawH = Math.max(bbox.max.y - bbox.min.y, 0.1);
   const viewH = 2 * CAMERA_Z * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2));
-  const viewW = (viewH * size.width) / Math.max(size.height, 1);
-  const fill = size.width < 640 ? 0.7 : 0.82; // phones: a bit zoomed out
+  const viewW = (viewH * view.width) / Math.max(view.height, 1);
+  const fill = view.width < 640 ? 0.7 : 0.82; // phones: a bit zoomed out
   const scale = Math.min((fill * viewW) / rawW, (0.62 * viewH) / rawH);
 
   // Textures for authentic 3D printed polymer finish
@@ -242,7 +248,7 @@ function KeychainMesh({
       <shadowMaterial opacity={0.25} />
     </mesh>
     <Center
-      key={`${safeText}-${fontStyle}-${scale.toFixed(4)}`}
+      key={`${safeText}-${fontStyle}-${scale.toFixed(4)}-${Object.values(size).join("-")}`}
       position={[0, TARGET_Y, 0]}
     >
       {/* ── Scaled group: petite display size matching real handheld keychain ── */}
@@ -253,7 +259,7 @@ function KeychainMesh({
         </mesh>
 
         {/* ── 2. Foreground Embossed Text (Seamlessly fused into baseplate at z = baseDepth) ── */}
-        <mesh geometry={frontGeometry} position={[0, 0, BASE_DEPTH - TEXT_SINK]} castShadow>
+        <mesh geometry={frontGeometry} position={[0, 0, size.baseDepth - TEXT_SINK]} castShadow>
           <meshPhysicalMaterial {...textMatProps} />
         </mesh>
       </group>

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Logo from "@/components/Logo";
 import { lineLimit } from "@/lib/keychain-text";
+import { DEFAULT_SIZE, SIZE_SETTINGS, keychainSize, sizeConfig, type KeychainSize } from "@/lib/keychain-geometry";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPrint,
@@ -120,6 +121,20 @@ export interface FilamentItem {
   inStock: boolean;
 }
 
+// "3D Sizing" sliders. Sizes are in font units; the STL prints 1 unit as 16 mm.
+const SIZE_SLIDERS: { name: keyof KeychainSize; label: string; icon: typeof faRuler }[] = [
+  { name: "textSize", label: "Text Size", icon: faFont },
+  { name: "textDepth", label: "Text Depth", icon: faLayerGroup },
+  { name: "baseDepth", label: "Base Thickness", icon: faLayerGroup },
+  { name: "border", label: "Border Around Letters", icon: faRuler },
+  { name: "earRadius", label: "Keyring Ear Radius", icon: faRuler },
+  { name: "holeRadius", label: "Keyring Hole Diameter", icon: faRuler },
+];
+function formatSize(name: keyof KeychainSize, v: number): string {
+  if (name === "textSize") return `${Math.round((v / DEFAULT_SIZE.textSize) * 100)}%`;
+  return `${(v * 16 * (name === "holeRadius" ? 2 : 1)).toFixed(1)} mm`;
+}
+
 export interface StyleItem {
   id: string;
   name: string;
@@ -228,12 +243,9 @@ export default function AdminDashboard({
   );
   const initialConfig = (keychainStyle?.config as Record<string, unknown>) || {};
 
-  const [fontSize, setFontSize] = useState<number>(Number(initialConfig.fontSize ?? 1.2));
-  const [textDepth, setTextDepth] = useState<number>(Number(initialConfig.extrusionDepth ?? 0.18));
-  const [baseDepth, setBaseDepth] = useState<number>(Number(initialConfig.baseDepth ?? 0.20));
-  const [offsetRadius, setOffsetRadius] = useState<number>(Number(initialConfig.offsetRadius ?? 0.18));
-  const [earRadius, setEarRadius] = useState<number>(Number(initialConfig.earRadius ?? 0.22));
-  const [holeRadius, setHoleRadius] = useState<number>(Number(initialConfig.holeRadius ?? 0.10));
+  // The same reader the shop, the STL and the test bench use, so the sliders start from what prints
+  const [sizes, setSizes] = useState<KeychainSize>(() => keychainSize(initialConfig));
+  const printSizes = keychainSize(sizeConfig(sizes)); // what the sliders will print (ear/hole kept printable)
   const [maxLines, setMaxLines] = useState<number>(lineLimit(initialConfig));
   const [priceDrafts, setPriceDrafts] = useState<Record<string, number>>({}); // product id → edited price
   const [priceSaving, setPriceSaving] = useState<string | null>(null);
@@ -493,15 +505,7 @@ export default function AdminDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fontFamily: defaultFont,
-          config: {
-            fontSize: Number(fontSize),
-            extrusionDepth: Number(textDepth),
-            baseDepth: Number(baseDepth),
-            offsetRadius: Number(offsetRadius),
-            earRadius: Number(earRadius),
-            holeRadius: Number(holeRadius),
-            maxLines,
-          },
+          config: { ...sizeConfig(printSizes), maxLines },
         }),
       });
       if (res.ok) {
@@ -1160,143 +1164,31 @@ export default function AdminDashboard({
                     </p>
                   </div>
 
-                  {/* Font Size Multiplier */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faFont} className="text-tertiary-sage" />
-                        <span>Font Scale</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{fontSize.toFixed(2)}x</span>
+                  {SIZE_SLIDERS.map(({ name, label, icon }) => (
+                    <div key={name} className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <label htmlFor={`size-${name}`} className="font-bold text-primary-navy flex items-center gap-1.5">
+                          <FontAwesomeIcon icon={icon} className="text-tertiary-sage" />
+                          <span>{label}</span>
+                        </label>
+                        <span className="font-mono text-emerald-700 font-bold">{formatSize(name, sizes[name])}</span>
+                      </div>
+                      <input
+                        id={`size-${name}`}
+                        type="range"
+                        min={SIZE_SETTINGS[name].min}
+                        max={SIZE_SETTINGS[name].max}
+                        step={0.005}
+                        value={sizes[name]}
+                        onChange={(e) => setSizes((prev) => ({ ...prev, [name]: parseFloat(e.target.value) }))}
+                        className="w-full accent-tertiary-sage cursor-pointer"
+                      />
+                      <p className="text-[11px] text-muted">
+                        Default: {formatSize(name, DEFAULT_SIZE[name])}
+                        {printSizes[name] !== sizes[name] && ` · prints as ${formatSize(name, printSizes[name])} to stay printable`}
+                      </p>
                     </div>
-                    <input
-                      type="range"
-                      min={0.8}
-                      max={1.8}
-                      step={0.05}
-                      value={fontSize}
-                      onChange={(e) => setFontSize(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 1.20x
-                    </p>
-                  </div>
-
-                  {/* Lettering Emboss Depth */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faLayerGroup} className="text-tertiary-sage" />
-                        <span>Text Depth</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{(textDepth * 10).toFixed(1)} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.10}
-                      max={0.35}
-                      step={0.01}
-                      value={textDepth}
-                      onChange={(e) => setTextDepth(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 1.8 mm
-                    </p>
-                  </div>
-
-                  {/* Baseplate Depth */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faLayerGroup} className="text-tertiary-sage" />
-                        <span>Base Depth</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{(baseDepth * 10).toFixed(1)} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.12}
-                      max={0.40}
-                      step={0.02}
-                      value={baseDepth}
-                      onChange={(e) => setBaseDepth(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 2.0 mm
-                    </p>
-                  </div>
-
-                  {/* Baseplate Contour Offset Radius R */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
-                        <span>Contour Margin</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{(offsetRadius * 10).toFixed(1)} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.12}
-                      max={0.30}
-                      step={0.01}
-                      value={offsetRadius}
-                      onChange={(e) => setOffsetRadius(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 1.8 mm
-                    </p>
-                  </div>
-
-                  {/* Keyring Eyelet Radius */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
-                        <span>Eyelet Radius</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{(earRadius * 10).toFixed(1)} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.16}
-                      max={0.32}
-                      step={0.01}
-                      value={earRadius}
-                      onChange={(e) => setEarRadius(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 2.2 mm
-                    </p>
-                  </div>
-
-                  {/* Keyring Through-Hole Radius */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <label className="font-bold text-primary-navy flex items-center gap-1.5">
-                        <FontAwesomeIcon icon={faRuler} className="text-tertiary-sage" />
-                        <span>Hole Diameter</span>
-                      </label>
-                      <span className="font-mono text-emerald-700 font-bold">{(holeRadius * 20).toFixed(1)} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.06}
-                      max={0.16}
-                      step={0.01}
-                      value={holeRadius}
-                      onChange={(e) => setHoleRadius(parseFloat(e.target.value))}
-                      className="w-full accent-tertiary-sage cursor-pointer"
-                    />
-                    <p className="text-[11px] text-muted">
-                      Default: 2.0 mm
-                    </p>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -1494,6 +1386,7 @@ export default function AdminDashboard({
                   baseColor={testBaseColor}
                   fontStyle={testFontStyle}
                   hasKeychainLoop={testKeychainLoop}
+                  size={printSizes}
                 />
               </div>
             </div>
