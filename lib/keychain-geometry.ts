@@ -20,8 +20,9 @@ const EAR_RADIUS = 0.25; // ≈ 2 mm wall around the hole
 const HOLE_RADIUS = 0.125; // ≈ 4 mm hole printed: fits common split rings
 const EAR_OFFSET = 0.14; // keyring centre, left of the plate edge
 const FILLET = 0.6; // multi-line: radius of the rounded joins between lines (≈ 10 mm printed)
-const NOTCH_DEPTH = 0.07; // single line: notches shallower than this (≈ 1.1 mm) are filled; real height steps are deeper
-const NOTCH_REACH = 30; // samples (≈ 0.45 units) looked at on each side of a notch
+const GRID = 0.01; // single line: distance-map cell (≈ 0.16 mm printed)
+const MIN_INSIDE = 0.04; // single line: inside corners rounded this much (> plate bevel 0.02, so it can't fold)
+const BAR_TOP = 0.5; // single line: a gap between words is bridged by a bar from the baseline up to here
 
 type Pt = { x: number; y: number };
 
@@ -43,7 +44,6 @@ interface Part {
 
 const MIN_EDGE = 0.02; // ≈ 0.3 mm printed: below nozzle size, and shorter edges fold the letter bevel
 const PLATE_MIN_EDGE = 0.008; // plate outline: drops duplicate / near-duplicate points
-const MIN_INSIDE_RADIUS = 0.35; // single line: inside corners (gaps between letters) rounded this much (≈ 5.6 mm printed), keeps gaps shallow and the plate bevel from folding
 
 /** Polygon of a glyph path with points closer than MIN_EDGE dropped (curves sampled finely first). */
 function cleanPoints(path: THREE.Path): THREE.Vector2[] {
@@ -122,22 +122,6 @@ export function filletInsideCorners(f: number[], step: number, r: number): numbe
     let m = -Infinity;
     for (let j = -k; j <= k; j++) m = Math.max(m, eroded[n + k + j] + disc[j + k]);
     return Math.min(m, f[n]); // never above the input (also when the end is all air)
-  });
-}
-
-/**
- * Fills shallow notches in a lower envelope (plate above `f`), e.g. where two rounded letter
- * corners meet: a point is raised to the lower of the two levels found within `reach` samples
- * on each side, if that is less than `depth` away. Only ever adds plate (result ≤ f).
- * For an upper envelope negate values in and out.
- */
-export function fillShallowNotches(f: number[], reach = NOTCH_REACH, depth = NOTCH_DEPTH): number[] {
-  return f.map((v, i) => {
-    let left = v, right = v;
-    for (let j = Math.max(0, i - reach); j < i; j++) left = Math.min(left, f[j]);
-    for (let j = i + 1; j <= Math.min(f.length - 1, i + reach); j++) right = Math.min(right, f[j]);
-    const level = Math.max(left, right);
-    return v - level < depth ? level : v;
   });
 }
 
@@ -314,7 +298,7 @@ export function keychainPlateShape(font: Font, safeText: string, hasKeychainLoop
 
   return lines.length > 1
     ? multiLinePlate(parts, hasKeychainLoop)
-    : singleLinePlate(font, safeText, parts[0], hasKeychainLoop);
+    : singleLinePlate(lines[0], parts[0], hasKeychainLoop);
 }
 
 /**
@@ -368,138 +352,229 @@ function multiLinePlate(lines: Part[], hasKeychainLoop: boolean): THREE.Shape {
   return finishPlate([...bottom, ...top.reverse()], hole);
 }
 
-/** One line: bottom/top envelopes plus flanks that follow the first and last letter. */
-function singleLinePlate(font: Font, safeText: string, line: Part, hasKeychainLoop: boolean): THREE.Shape {
-  const letterPts = line.pts;
-  const rawBBox = new THREE.Box2().setFromPoints(letterPts);
-
-  const firstBox = new THREE.Box2();
-  const firstPts: THREE.Vector2[] = [];
-  font.generateShapes(safeText[0] || "A", TEXT_SIZE).forEach((s) =>
-    outlinePoints(s, 150).forEach((p) => {
-      firstBox.expandByPoint(p);
-      firstPts.push(p);
-    })
-  );
-  const lastBox = new THREE.Box2();
-  const rawLast: THREE.Vector2[] = [];
-  font.generateShapes(safeText[safeText.length - 1] || "A", TEXT_SIZE).forEach((s) =>
-    outlinePoints(s, 150).forEach((p) => {
-      lastBox.expandByPoint(p);
-      rawLast.push(p);
-    })
-  );
-  const lastCharOffset = rawBBox.max.x - lastBox.max.x;
-  const lastPts = rawLast.map((p) => new THREE.Vector2(p.x + lastCharOffset, p.y));
-
-  let firstTopPt = firstPts[0];
-  let firstBottomPt = firstPts[0];
-  for (const p of firstPts) {
-    // highest point, leftmost among equals: a flat top (T, E) must start at its left corner
-    if (p.y > firstTopPt.y + 1e-4 || (Math.abs(p.y - firstTopPt.y) <= 1e-4 && p.x < firstTopPt.x)) firstTopPt = p;
-    if (p.x < firstBottomPt.x) firstBottomPt = p;
-  }
-  let lastRightPt = lastPts[0];
-  for (const p of lastPts) if (p.x > lastRightPt.x) lastRightPt = p;
-
-  const samplesFrom = (start: number, end: number) => {
-    const xs: number[] = [];
-    for (let x = start; x <= end + 0.0001; x += STEP) xs.push(+x.toFixed(4));
-    return xs;
-  };
-  const env = (x: number, up: boolean) => {
-    const v = envelopeAt([line], x, up);
-    return Number.isFinite(v) ? v : up ? 0.6 : -(R - 0.02);
-  };
-
-  // 1. Bottom and 2. top envelopes
-  const bottomXSamples = samplesFrom(firstBottomPt.x, lastRightPt.x);
-  const smoothLower = filletInsideCorners(
-    smooth(fillShallowNotches(bridge(bottomXSamples.map((x) => env(x, false)), Math.min)), 0.2, 0.6),
-    STEP,
-    MIN_INSIDE_RADIUS
-  );
-  const topXSamples = samplesFrom(firstTopPt.x, lastRightPt.x);
-  const smoothUpper = filletInsideCorners(
-    smooth(fillShallowNotches(bridge(topXSamples.map((x) => -env(x, true)), Math.min)), 0.2, 0.6),
-    STEP,
-    MIN_INSIDE_RADIUS
-  ).map((v) => -v);
-
-  // Flank: outermost x of `pts` at each height, from the bottom envelope to the top one.
-  const stepY = 0.015;
-  const flank = (pts: THREE.Vector2[], yFrom: number, yTo: number, right: boolean, fallbackX: number) => {
-    const out: Pt[] = [];
-    for (let y = yFrom; y <= yTo + 0.0001; y += stepY) {
-      let x = right ? -Infinity : Infinity;
-      for (const p of pts) {
-        const dy = Math.abs(y - p.y);
-        if (dy <= R) {
-          const d = Math.sqrt(Math.max(0, R * R - dy * dy));
-          x = right ? Math.max(x, p.x + d) : Math.min(x, p.x - d);
-        }
+/**
+ * Squared distances (in cells) from every grid cell to the nearest `feature` cell: the exact
+ * Euclidean distance transform of Felzenszwalb & Huttenlocher, one column/row pass at a time.
+ */
+function distanceMap(feature: Uint8Array, w: number, h: number): Float64Array {
+  const INF = 1e20;
+  const d = Float64Array.from(feature, (f) => (f ? 0 : INF));
+  const n = Math.max(w, h);
+  const f = new Float64Array(n), out = new Float64Array(n), z = new Float64Array(n + 1);
+  const v = new Int32Array(n);
+  const pass = (len: number, base: number, stride: number) => {
+    for (let i = 0; i < len; i++) f[i] = d[base + i * stride];
+    let k = 0;
+    v[0] = 0;
+    z[0] = -INF;
+    z[1] = INF;
+    for (let q = 1; q < len; q++) {
+      let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) {
+        k--;
+        s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
       }
-      out.push({ x: Number.isFinite(x) ? x : fallbackX, y: +y.toFixed(4) });
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = INF;
     }
-    return out;
+    k = 0;
+    for (let q = 0; q < len; q++) {
+      while (z[k + 1] < q) k++;
+      out[q] = (q - v[k]) ** 2 + f[v[k]];
+    }
+    for (let i = 0; i < len; i++) d[base + i * stride] = out[i];
   };
-  const smoothX = (pts: Pt[], side: number, centre: number) => {
-    const xs = smooth(
-      pts.map((p) => p.x),
-      side,
-      centre
-    );
-    return pts.map((p, i) => ({ x: xs[i], y: p.y }));
+  for (let x = 0; x < w; x++) pass(h, x, w); // columns
+  for (let y = 0; y < h; y++) pass(w, y * w, 1); // rows
+  return d;
+}
+
+// Marching squares: for each inside/outside pattern of a cell's corners (bit 1 = bottom-left,
+// 2 = bottom-right, 4 = top-right, 8 = top-left), the edges the contour joins (0 bottom,
+// 1 right, 2 top, 3 left). Saddles 5 and 10 depend on the cell centre.
+const SEGMENTS: Record<number, number[][]> = {
+  1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]],
+  9: [[0, 2]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]],
+};
+
+/** Longest closed contour where `field` (sampled on a w×h grid, positive inside) crosses 0. */
+function outerContour(field: Float64Array, w: number, h: number, x0: number, y0: number): Pt[] {
+  const at = (i: number, j: number) => field[j * w + i];
+  // edge ids: 2k = from grid point k to its right neighbour, 2k+1 = to the one above
+  const point = (e: number): Pt => {
+    const k = e >> 1, i = k % w, j = (k - i) / w;
+    const i2 = e & 1 ? i : i + 1, j2 = e & 1 ? j + 1 : j;
+    const f1 = at(i, j), t = f1 / (f1 - at(i2, j2));
+    return { x: x0 + (i + t * (i2 - i)) * GRID, y: y0 + (j + t * (j2 - j)) * GRID };
   };
-
-  // 3. Right flank
-  const smoothRight = smoothX(
-    flank(lastPts, smoothLower[smoothLower.length - 1], smoothUpper[smoothUpper.length - 1], true, lastRightPt.x + R),
-    0.2,
-    0.6
-  );
-
-  // 4. Left flank, with the keyring ear
-  const yTopLeft = smoothUpper[0];
-  const yBottomLeft = smoothLower[0];
-  const earY = Math.max(0.48, Math.min(0.65, (firstBox.max.y + firstBox.min.y) / 2));
-  const leftSamples = flank(firstPts, yBottomLeft, yTopLeft, false, firstBox.min.x - R);
-
-  let contourXAtEar = firstBox.min.x - R;
-  let minDiff = Infinity;
-  for (const lp of leftSamples) {
-    const diff = Math.abs(lp.y - earY);
-    if (diff < minDiff) {
-      minDiff = diff;
-      contourXAtEar = lp.x;
+  const links = new Map<number, number[]>();
+  const link = (a: number, b: number) => {
+    if (!links.has(a)) links.set(a, []);
+    if (!links.has(b)) links.set(b, []);
+    links.get(a)!.push(b);
+    links.get(b)!.push(a);
+  };
+  for (let j = 0; j < h - 1; j++) {
+    for (let i = 0; i < w - 1; i++) {
+      const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+      const code = (a > 0 ? 1 : 0) | (b > 0 ? 2 : 0) | (c > 0 ? 4 : 0) | (d > 0 ? 8 : 0);
+      if (code === 0 || code === 15) continue;
+      const k = j * w + i;
+      const e = [2 * k, 2 * (k + 1) + 1, 2 * (k + w), 2 * k + 1]; // bottom, right, top, left
+      const joined = (a + b + c + d) / 4 > 0; // saddle: are the two inside corners connected?
+      const segs =
+        code === 5 ? (joined ? [[0, 1], [2, 3]] : [[3, 0], [1, 2]])
+        : code === 10 ? (joined ? [[3, 0], [1, 2]] : [[0, 1], [2, 3]])
+        : SEGMENTS[code];
+      for (const [p, q] of segs) link(e[p], e[q]);
     }
   }
-  const earX = contourXAtEar - EAR_OFFSET;
+  let best: number[] = [];
+  const seen = new Set<number>();
+  for (const start of links.keys()) {
+    if (seen.has(start)) continue;
+    const loop = [start];
+    seen.add(start);
+    let prev = start;
+    let cur: number | undefined = links.get(start)![0];
+    while (cur !== undefined && !seen.has(cur)) {
+      loop.push(cur);
+      seen.add(cur);
+      const next: number | undefined = links.get(cur)!.find((n) => n !== prev);
+      prev = cur;
+      cur = next;
+    }
+    if (loop.length > best.length) best = loop;
+  }
+  return best.map(point);
+}
 
-  const leftWithEar = leftSamples.map((lp) => {
-    const dy = Math.abs(lp.y - earY);
-    if (!hasKeychainLoop || dy >= EAR_RADIUS) return lp;
-    return { x: Math.min(lp.x, earX - Math.sqrt(EAR_RADIUS * EAR_RADIUS - dy * dy)), y: lp.y };
-  });
-  const smoothLeft = smoothX(leftWithEar, 0.15, 0.7);
+/**
+ * Labels the islands of the grown letters (squared distance ≤ limit) and, if there are several,
+ * adds to `mask` a baseline bar (rows 0…BAR_TOP) joining each island's letters to the next one's.
+ * An island with no letter in that band (e.g. a detached dot) gets a strip down to it instead.
+ * Returns whether anything was added.
+ */
+function bridgeIslands(mask: Uint8Array, grown: Float64Array, limit: number, w: number, h: number, y0: number): boolean {
+  const label = new Int32Array(w * h).fill(-1);
+  const islands: { lo: number; hi: number; cells: number[] }[] = [];
+  for (let k0 = 0; k0 < w * h; k0++) {
+    if (label[k0] >= 0 || grown[k0] > limit) continue;
+    const id = islands.length, cells: number[] = [], stack = [k0];
+    label[k0] = id;
+    while (stack.length) {
+      const k = stack.pop()!;
+      if (mask[k]) cells.push(k);
+      const i = k % w;
+      for (const n of [i > 0 ? k - 1 : -1, i < w - 1 ? k + 1 : -1, k - w, k + w])
+        if (n >= 0 && n < w * h && label[n] < 0 && grown[n] <= limit) {
+          label[n] = id;
+          stack.push(n);
+        }
+    }
+    islands.push({ lo: Infinity, hi: -Infinity, cells });
+  }
+  if (islands.length < 2) return false;
 
-  // At each corner, where a flank starts inside the end of an envelope, trim the envelope
-  // back to the flank. Otherwise the outline folds back over itself (a broken solid) or,
-  // if pushed outward, leaves a small hook.
-  const lf0 = smoothLeft[0].x, lfN = smoothLeft[smoothLeft.length - 1].x;
-  const rf0 = smoothRight[0].x, rfN = smoothRight[smoothRight.length - 1].x;
-  const trim = (edge: Pt[], minX: number, maxX: number) => {
-    const kept = edge.filter((p) => p.x >= minX && p.x <= maxX);
-    return kept.length >= 2 ? kept : edge;
+  const bandRows: number[] = [];
+  for (let j = 0; j < h; j++) if (y0 + j * GRID >= 0 && y0 + j * GRID <= BAR_TOP) bandRows.push(j);
+  const band0 = bandRows[0], band1 = bandRows[bandRows.length - 1];
+  for (const isl of islands) {
+    for (const k of isl.cells) {
+      const j = Math.floor(k / w);
+      if (j >= band0 && j <= band1) {
+        isl.lo = Math.min(isl.lo, k % w);
+        isl.hi = Math.max(isl.hi, k % w);
+      }
+    }
+    if (isl.lo === Infinity) {
+      // no letter in the band: a strip from its lowest letter cell down into the band
+      const low = isl.cells.reduce((a, b) => (b < a ? b : a));
+      const i = low % w;
+      for (let j = band0; j <= Math.floor(low / w); j++) for (let c = i - 2; c <= i + 2; c++) mask[j * w + c] = 1;
+      isl.lo = isl.hi = i;
+    }
+  }
+  islands.sort((a, b) => a.lo - b.lo);
+  for (let n = 1; n < islands.length; n++) {
+    const from = Math.min(islands[n - 1].hi, islands[n].lo), to = Math.max(islands[n - 1].hi, islands[n].lo);
+    for (const j of bandRows) for (let i = from; i <= to; i++) mask[j * w + i] = 1;
+  }
+  return true;
+}
+
+/**
+ * One line: the plate edge is the same distance R from the lettering everywhere, like a sticker
+ * contour. Built on a distance map of the letters and the keyring ear; where the contour would
+ * fall apart (a space between words) a baseline bar bridges it. Counters are filled; inside
+ * corners are rounded by MIN_INSIDE.
+ */
+function singleLinePlate(line: Line, part: Part, hasKeychainLoop: boolean): THREE.Shape {
+  const polys = line.shapes.map((s) => [s.getPoints(), ...s.holes.map((h) => h.getPoints())]);
+  const box = new THREE.Box2().setFromPoints(part.pts);
+
+  // Keyring: halfway up the first letter (kept to the middle band), just outside the plate edge there
+  let hole: Pt | null = null;
+  if (hasKeychainLoop) {
+    const boxes = line.shapes.map((s) => new THREE.Box2().setFromPoints(s.getPoints()));
+    const first = boxes.reduce((a, b) => (b.min.x < a.min.x ? b : a));
+    const earY = Math.max(0.48, Math.min(0.65, (first.min.y + first.max.y) / 2));
+    let edgeX = Infinity;
+    for (const p of part.pts) {
+      const dy = Math.abs(p.y - earY);
+      if (dy <= R) edgeX = Math.min(edgeX, p.x - Math.sqrt(R * R - dy * dy));
+    }
+    if (!Number.isFinite(edgeX)) edgeX = box.min.x - R;
+    hole = { x: edgeX - EAR_OFFSET, y: earY };
+  }
+
+  const pad = R + MIN_INSIDE + 4 * GRID;
+  const x0 = Math.min(box.min.x, hole ? hole.x - EAR_RADIUS : Infinity) - pad;
+  const y0 = Math.min(box.min.y, hole ? hole.y - EAR_RADIUS : Infinity) - pad;
+  const w = Math.ceil((Math.max(box.max.x, hole ? hole.x + EAR_RADIUS : -Infinity) + pad - x0) / GRID) + 1;
+  const h = Math.ceil((Math.max(box.max.y, hole ? hole.y + EAR_RADIUS : -Infinity) + pad - y0) / GRID) + 1;
+
+  // 1. What the plate grows from: the letters (each shape even-odd, so counters stay open) and the ear
+  const mask = new Uint8Array(w * h);
+  const fillRow = (j: number, from: number, to: number) => {
+    const last = Math.min(w - 1, Math.floor((to - x0) / GRID));
+    for (let i = Math.max(0, Math.ceil((from - x0) / GRID)); i <= last; i++) mask[j * w + i] = 1;
   };
-  const bottom = trim(bottomXSamples.map((x, i) => ({ x, y: smoothLower[i] })), lf0, rf0);
-  const top = trim(topXSamples.map((x, i) => ({ x, y: smoothUpper[i] })), lfN, rfN);
+  for (let j = 0; j < h; j++) {
+    const y = y0 + j * GRID;
+    for (const rings of polys) {
+      const xs: number[] = [];
+      for (const ring of rings)
+        for (let k = 0; k < ring.length; k++) {
+          const a = ring[k], b = ring[(k + 1) % ring.length];
+          if (a.y > y !== b.y > y) xs.push(a.x + ((y - a.y) * (b.x - a.x)) / (b.y - a.y));
+        }
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) fillRow(j, xs[k], xs[k + 1]);
+    }
+    if (hole && Math.abs(y - hole.y) < EAR_RADIUS - R) {
+      const dx = Math.sqrt((EAR_RADIUS - R) ** 2 - (y - hole.y) ** 2); // + the R offset = EAR_RADIUS
+      fillRow(j, hole.x - dx, hole.x + dx);
+    }
+  }
 
-  // 5. bottom → right flank → top (reversed) → left flank (reversed)
-  return finishPlate(
-    [...bottom, ...smoothRight, ...top.reverse(), ...[...smoothLeft].reverse()],
-    hasKeychainLoop ? { x: earX, y: earY } : null
-  );
+  // 2. Grow by R + MIN_INSIDE, then shrink by MIN_INSIDE: an offset of exactly R whose inside
+  //    corners are rounded (a morphological closing)
+  const limit = ((R + MIN_INSIDE) / GRID) ** 2;
+  let grown = distanceMap(mask, w, h);
+
+  // Parts that grow into separate islands (words, or a "T" whose bar hangs over a short "o")
+  // are joined by a bar along the baseline between them, each to the next from left to right
+  if (bridgeIslands(mask, grown, limit, w, h, y0)) grown = distanceMap(mask, w, h);
+
+  const outside = Uint8Array.from(grown, (d2) => (d2 > limit ? 1 : 0));
+  const field = Float64Array.from(distanceMap(outside, w, h), (d2) => Math.sqrt(d2) * GRID - MIN_INSIDE);
+
+  // 3. Trace the edge; every other point (≈ 0.01 apart) is still finer than any printer
+  const outline = outerContour(field, w, h, x0, y0).filter((_, i) => i % 2 === 0);
+  return finishPlate(outline, hole);
 }
 
 /** Embossed lettering (all lines, centred), sitting on z = 0; place it at BASE_DEPTH - TEXT_SINK. */

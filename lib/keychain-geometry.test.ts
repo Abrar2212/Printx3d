@@ -6,7 +6,7 @@ import path from "node:path";
 import * as THREE from "three";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { buildKeychainPlate, buildKeychainText, filletInsideCorners, fillShallowNotches, findSpike, keychainPlateShape, keychainText, TEXT_SIZE } from "./keychain-geometry";
+import { buildKeychainPlate, buildKeychainText, filletInsideCorners, findSpike, keychainPlateShape, keychainText, TEXT_SIZE } from "./keychain-geometry";
 import { lineLimit, oneLine } from "./keychain-text";
 
 const fontsDir = path.join(__dirname, "..", "public", "fonts");
@@ -52,26 +52,28 @@ test("filletInsideCorners rounds a step with the given radius and never removes 
   assert.ok(Math.abs(g[at45] + (r - r / Math.SQRT2)) < 0.02, "follows a circular arc");
 });
 
-test("fillShallowNotches fills small notches, keeps real steps and slopes", () => {
-  const notch = [0, 0, 0, 0.03, 0.03, 0, 0, 0]; // plate above: 0.03 notch up into it
-  assert.deepEqual(fillShallowNotches(notch, 3, 0.04), [0, 0, 0, 0, 0, 0, 0, 0]);
-  const step = [0, 0, 0, 0.3, 0.3, 0.3, 0, 0]; // deep: a real shape, untouched
-  assert.deepEqual(fillShallowNotches(step, 3, 0.04), step);
-  const slope = [0, 0.01, 0.02, 0.03, 0.04];
-  assert.deepEqual(fillShallowNotches(slope, 3, 0.04), slope);
-});
-
-test("single-line plate edge has no notch where letter corners meet (Captain 'Imran')", () => {
-  const top = keychainPlateShape(loadFont("american_captain"), "Imran", true)
-    .getPoints()
-    .filter((p) => p.y > 0.8 && p.x > 0.2 && p.x < 2.3); // straight part of the top edge
-  const ys = top.map((p) => p.y);
-  assert.ok(Math.max(...ys) - Math.min(...ys) < 0.003, `top edge wobbles by ${(Math.max(...ys) - Math.min(...ys)).toFixed(4)}`);
-});
+// The client's rule: the plate edge is the same distance from the letters everywhere.
+for (const id of ["american_captain", "helvetiker_bold", "gravity_bold"]) {
+  test(`single-line plate edge is equidistant from the letters (${id} "IMRAN")`, () => {
+    const font = loadFont(id);
+    const letters: THREE.Vector2[] = [];
+    font.generateShapes("IMRAN", TEXT_SIZE).forEach((s) => letters.push(...s.closePath().getSpacedPoints(600)));
+    const left = Math.min(...letters.map((p) => p.x));
+    const gaps = keychainPlateShape(font, "IMRAN", true)
+      .getPoints()
+      .filter((p) => p.x > left) // the keyring ear is left of the first letter
+      .map((p) => Math.min(...letters.map((q) => q.distanceTo(p))))
+      .sort((a, b) => a - b);
+    const R = 0.11, pct = (f: number) => gaps[Math.floor(f * (gaps.length - 1))];
+    assert.ok(pct(0) > R - 0.015, `${id}: edge comes within ${pct(0).toFixed(3)} of a letter`);
+    assert.ok(pct(0.05) > R - 0.01 && pct(0.95) < R + 0.015, `${id}: 90% of the edge spans ${pct(0.05).toFixed(3)}–${pct(0.95).toFixed(3)}, expected ${R}`);
+    assert.ok(pct(1) < R + 0.06, `${id}: edge strays ${pct(1).toFixed(3)} from the letters`);
+  });
+}
 
 const fonts = ["helvetiker_bold", "droid_serif_bold", "gravity_bold", "american_captain", "thunder_script"];
 const texts = [
-  "Imran", "Tommy", "Hello World", "Imran\nHossain", "Imran\noi", "hello\njdk", "Tommy\nJo",
+  "Imran", "Tommy", "Hello World", "Fiji", "jigsaw", "Imran\nHossain", "Imran\noi", "hello\njdk", "Tommy\nJo",
   "Ab\nCd\nEf", "A\nLongername12\nBo", "Hi there\nX", "TOP LINE\nmid\nBottom Line",
 ];
 
