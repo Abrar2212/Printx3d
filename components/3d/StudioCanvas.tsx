@@ -30,7 +30,6 @@ interface StudioCanvasProps {
   textColor: string;          // Top layer embossed lettering color
   baseColor: string;          // Key contour background plate color
   fontStyle?: string;         // Font ID e.g. "helvetiker_bold"
-  materialType?: "PLA" | "PETG" | "TPU";
   hasKeychainLoop?: boolean;
   size?: KeychainSize; // the product's admin "3D Sizing" settings (keychainSize)
 }

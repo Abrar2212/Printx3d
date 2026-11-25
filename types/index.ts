@@ -12,7 +12,6 @@ export type OrderStatus =
 
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
-export type MaterialType = "PLA" | "PETG" | "TPU";
 
 // ─── Font Styles ──────────────────────────────────────────────
 export interface FontStyleOption {
@@ -177,7 +176,7 @@ export interface FilamentColor {
   id: string;
   name: string;
   hexCode: string;
-  materialType: MaterialType;
+  materials: string[]; // stocked in: ids from lib/materials.ts
   inStock: boolean;
 }
 

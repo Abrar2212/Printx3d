@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { MATERIAL_IDS, materialName } from "@/lib/materials";
 import { FONT_STYLE_OPTIONS } from "@/types";
 import { keychainText, lineLimit, MAX_LINE_CHARS, MAX_LINES } from "@/lib/keychain-text";
 
@@ -32,6 +33,7 @@ const CreateOrderSchema = z.object({
     .refine((id) => FONT_IDS.has(id), "Unknown font")
     .optional()
     .default("helvetiker_bold"),
+  material: z.enum(MATERIAL_IDS).optional().default("PLA"),
   quantity: z.number().int().min(1).max(20).default(1),
   customerName: z.string().max(100).optional().default("Customer"),
   customerEmail: z.string().email().optional().or(z.literal("")),
@@ -90,6 +92,18 @@ export async function POST(req: NextRequest) {
     }
     const customText = keychainText(data.customText, limit); // stored exactly as it will print
 
+    // Both colours must be in stock, and stocked in the chosen material
+    const colorIds = [...new Set([data.colorId, ...(data.baseColorId ? [data.baseColorId] : [])])];
+    const stocked = await db.color.count({
+      where: { id: { in: colorIds }, inStock: true, materials: { has: data.material } },
+    });
+    if (stocked !== colorIds.length) {
+      return NextResponse.json(
+        { error: `A chosen colour is not available in ${materialName(data.material)}. Please pick another.` },
+        { status: 422 }
+      );
+    }
+
     const unitPrice = Number(style.basePrice);
     const totalPrice = unitPrice * data.quantity;
 
@@ -113,6 +127,7 @@ export async function POST(req: NextRequest) {
             colorId: data.colorId,
             baseColorId: data.baseColorId || null,
             fontStyle: data.fontStyle || "helvetiker_bold",
+            material: data.material,
             customText,
             quantity: data.quantity,
             unitPrice,

@@ -11,6 +11,7 @@ export interface CreateOrderPayload {
   colorId: string;        // Text Color
   baseColorId?: string;   // Key Contour Backplate Color
   fontStyle?: string;     // Font Style ID (e.g. "helvetiker_bold")
+  material?: string;      // "PLA" | "TPU"
   quantity: number;
   customerName: string;
   customerEmail: string;
@@ -30,6 +31,7 @@ export interface OrderItemResponse {
   id: string;
   customText: string;
   fontStyle: string;
+  material: string | null;
   quantity: number;
   unitPrice: number;
   stlFileUrl: string | null;

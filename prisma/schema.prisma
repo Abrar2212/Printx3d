@@ -48,7 +48,8 @@ model Color {
   id           String       @id @default(uuid())
   name         String       // "Matte Black" | "Silk Gold" | "Fire Red"
   hexCode      String       @map("hex_code")
-  materialType MaterialType @map("material_type")
+  materialType MaterialType @default(PLA) @map("material_type") // unused since materials
+  materials    String[]     @default(["PLA", "TPU"]) // stocked in: ids from lib/materials.ts
   inStock      Boolean      @default(true) @map("in_stock")
 
   textOrderItems OrderItem[] @relation("TextColor")
@@ -106,6 +107,7 @@ model OrderItem {
   colorId     String   @map("color_id")        // Primary Text Color
   baseColorId String?  @map("base_color_id")   // Key Contour Backplate Color
   fontStyle   String   @default("helvetiker_bold") @map("font_style") // Selected 3D Typeface
+  material    String?  // "PLA" | "TPU"; null on orders from before the choice existed
   customText  String   @map("custom_text")
   unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
   quantity    Int      @default(1)

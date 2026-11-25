@@ -3,11 +3,13 @@
 // no download URL anyone could share or guess.
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { keychainSTL } from "@/lib/keychain-stl";
+import { keychainSize } from "@/lib/keychain-geometry";
 
 interface Design {
   text: string;
   font: string;
   hasKeychainLoop: boolean;
+  size?: unknown; // the product's sizes when ordered; none on orders from before 1.1
 }
 
 const { fontBase } = (window as unknown as { PRINTX3D_ADMIN: { fontBase: string } }).PRINTX3D_ADMIN;
@@ -22,7 +24,7 @@ document.addEventListener("click", async (e) => {
   try {
     const design = JSON.parse(button.dataset.design ?? "{}") as Design;
     const font = await new FontLoader().loadAsync(`${fontBase}${design.font}.typeface.json`);
-    const stl = keychainSTL(font, design.text, design.hasKeychainLoop);
+    const stl = keychainSTL(font, design.text, design.hasKeychainLoop, 16, keychainSize(design.size));
     const url = URL.createObjectURL(new Blob([stl.buffer as ArrayBuffer], { type: "model/stl" }));
     const a = document.createElement("a");
     a.href = url;

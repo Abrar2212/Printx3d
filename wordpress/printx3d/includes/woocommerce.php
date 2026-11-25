@@ -42,11 +42,16 @@ function printx3d_validate_design(array $in) {
     $font = (string) ($in['font'] ?? '');
     if (!isset($fonts[$font])) return new WP_Error('font', 'That font is not available. Please pick another.');
 
+    $material = (string) ($in['material'] ?? '');
+    if (!isset(PRINTX3D_MATERIALS[$material])) return new WP_Error('material', 'Please choose a material.');
+
     $colors = [];
     foreach (['textColor' => 'Letter colour', 'baseColor' => 'Base colour'] as $key => $label) {
         $c = printx3d_find($s['colors'], (string) ($in[$key] ?? ''));
         if (!$c || empty($c['inStock'])) return new WP_Error('color', "$label is out of stock. Please pick another colour.");
-        $colors[$key] = ['id' => $c['id'], 'name' => $c['name'], 'hex' => $c['hexCode'], 'material' => $c['materialType']];
+        if (!in_array($material, printx3d_color_materials($c), true))
+            return new WP_Error('color', "$label is not available in " . PRINTX3D_MATERIALS[$material] . '. Please pick another colour.');
+        $colors[$key] = ['id' => $c['id'], 'name' => $c['name'], 'hex' => $c['hexCode']];
     }
 
     // A snapshot: the order keeps what the customer saw even if the settings change later
@@ -57,7 +62,9 @@ function printx3d_validate_design(array $in) {
         'styleId' => $style['id'],
         'styleName' => $style['name'],
         'price' => (float) $style['basePrice'],
+        'material' => $material,
         'hasKeychainLoop' => !empty($style['config']['hasKeychainLoop']),
+        'size' => printx3d_sizes($style['config']),
         'textColor' => $colors['textColor'],
         'baseColor' => $colors['baseColor'],
     ];
@@ -131,13 +138,14 @@ add_action('woocommerce_before_calculate_totals', function ($cart) {
 
 /** The design rows shown under the product on the cart and checkout pages. */
 function printx3d_design_rows(array $d): array {
-    return [
+    return array_filter([
         'Text' => str_replace("\n", ' / ', $d['text']),
         'Font' => $d['fontName'],
         'Letter colour' => $d['textColor']['name'],
         'Base colour' => $d['baseColor']['name'],
+        'Material' => PRINTX3D_MATERIALS[$d['material'] ?? ''] ?? '', // none on designs made before 1.1
         'Type' => $d['styleName'],
-    ];
+    ], 'strlen');
 }
 
 add_filter('woocommerce_get_item_data', function ($data, $item) {
@@ -159,13 +167,14 @@ add_action('woocommerce_after_order_itemmeta', function ($itemId, $item) {
     $d = $item->get_meta('_printx3d_design');
     if (empty($d['text'])) return;
     $file = 'PrintX3D_' . sanitize_file_name(str_replace("\n", '_', $d['text'])) . '_order-' . $item->get_order_id() . '.stl';
-    $design = ['text' => $d['text'], 'font' => $d['font'], 'hasKeychainLoop' => (bool) $d['hasKeychainLoop']];
+    $design = ['text' => $d['text'], 'font' => $d['font'], 'hasKeychainLoop' => (bool) $d['hasKeychainLoop'], 'size' => $d['size'] ?? null];
     printf(
-        '<p><button type="button" class="button printx3d-stl" data-design="%s" data-filename="%s">Download STL</button> <span class="description">Letters: %s · Base: %s</span></p>',
+        '<p><button type="button" class="button printx3d-stl" data-design="%s" data-filename="%s">Download STL</button> <span class="description">%s · Letters: %s · Base: %s</span></p>',
         esc_attr(wp_json_encode($design)),
         esc_attr($file),
-        esc_html($d['textColor']['name'] . ' (' . $d['textColor']['material'] . ')'),
-        esc_html($d['baseColor']['name'] . ' (' . $d['baseColor']['material'] . ')')
+        esc_html(PRINTX3D_MATERIALS[$d['material'] ?? ''] ?? $d['textColor']['material'] ?? ''),
+        esc_html($d['textColor']['name']),
+        esc_html($d['baseColor']['name'])
     );
 }, 10, 2);
 

@@ -2,7 +2,7 @@
 Tags: 3d, keychain, customizer, preview, 3d printing
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ With WooCommerce (free) active, customers add their design to the cart. The pric
 server from your product settings; text, font and colours are checked before anything is added.
 Each order line keeps the design, and shop staff get a "Download STL" button on the order screen.
 Administrators and Shop Managers can edit colours and products.
+
+Customers choose Plastic (PLA+) or Flexible (TPU). Tick which of the two each colour is stocked in;
+only those colours are offered for that material.
 
 == Installation ==
 

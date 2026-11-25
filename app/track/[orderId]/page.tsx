@@ -20,6 +20,7 @@ const select = {
     select: {
       id: true,
       customText: true,
+      material: true,
       quantity: true,
       unitPrice: true,
       color: { select: { name: true, hexCode: true } },

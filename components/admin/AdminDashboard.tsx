@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Logo from "@/components/Logo";
 import { lineLimit } from "@/lib/keychain-text";
+import { MATERIALS, MATERIAL_IDS, materialName } from "@/lib/materials";
 import { DEFAULT_SIZE, SIZE_SETTINGS, keychainSize, sizeConfig, type KeychainSize } from "@/lib/keychain-geometry";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -93,6 +94,7 @@ export interface OrderItem {
   id: string;
   customText: string;
   fontStyle?: string;
+  material?: string | null;
   quantity: number;
   unitPrice: number;
   style: { name: string; config?: Record<string, unknown> };
@@ -117,8 +119,29 @@ export interface FilamentItem {
   id: string;
   name: string;
   hexCode: string;
-  materialType: "PLA" | "PETG" | "TPU";
+  materials: string[];
   inStock: boolean;
+}
+
+/** Which materials a filament colour is stocked in; the last tick can't be removed. */
+function MaterialChecks({ value, onChange }: { value: string[]; onChange: (materials: string[]) => void }) {
+  return (
+    <fieldset>
+      <legend className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">Stocked in</legend>
+      {MATERIALS.map((m) => (
+        <label key={m.id} className="flex items-center gap-2 py-1 text-xs font-semibold cursor-pointer">
+          <input
+            type="checkbox"
+            checked={value.includes(m.id)}
+            disabled={value.length === 1 && value.includes(m.id)}
+            onChange={(e) => onChange(e.target.checked ? [...value, m.id] : value.filter((id) => id !== m.id))}
+            className="w-4 h-4 accent-slate-900"
+          />
+          {m.name}
+        </label>
+      ))}
+    </fieldset>
+  );
 }
 
 // "3D Sizing" sliders. Sizes are in font units; the STL prints 1 unit as 16 mm.
@@ -231,7 +254,7 @@ export default function AdminDashboard({
   const [isAddColorModalOpen, setIsAddColorModalOpen] = useState(false);
   const [newColorName, setNewColorName] = useState("");
   const [newColorHex, setNewColorHex] = useState("#FF6600");
-  const [newColorMaterial, setNewColorMaterial] = useState<"PLA" | "PETG" | "TPU">("PLA");
+  const [newColorMaterials, setNewColorMaterials] = useState<string[]>([...MATERIAL_IDS]);
   const [newColorInStock, setNewColorInStock] = useState(true);
   const [filamentActionLoading, setFilamentActionLoading] = useState(false);
 
@@ -404,7 +427,7 @@ export default function AdminDashboard({
         body: JSON.stringify({
           name: newColorName.trim(),
           hexCode: newColorHex,
-          materialType: newColorMaterial,
+          materials: newColorMaterials,
           inStock: newColorInStock,
         }),
       });
@@ -414,6 +437,7 @@ export default function AdminDashboard({
         setIsAddColorModalOpen(false);
         setNewColorName("");
         setNewColorHex("#FF6600");
+        setNewColorMaterials([...MATERIAL_IDS]);
       } else {
         alert("Failed to create color. Please check the hex code.");
       }
@@ -435,7 +459,7 @@ export default function AdminDashboard({
         body: JSON.stringify({
           name: editingColor.name,
           hexCode: editingColor.hexCode,
-          materialType: editingColor.materialType,
+          materials: editingColor.materials,
           inStock: editingColor.inStock,
         }),
       });
@@ -864,6 +888,7 @@ export default function AdminDashboard({
                                 </div>
                                 <div className="text-xs text-secondary-slate font-mono mt-0.5">
                                   {item.fontStyle || "helvetiker_bold"}
+                                  {item.material && ` · ${materialName(item.material)}`}
                                 </div>
                               </div>
 
@@ -1011,7 +1036,7 @@ export default function AdminDashboard({
                         </div>
 
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 uppercase">
-                          {color.materialType}
+                          {color.materials.map((m) => (m === "PLA" ? "PLA+" : m)).join(" / ")}
                         </span>
                       </div>
                     </div>
@@ -1451,18 +1476,7 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
-                    Material
-                  </label>
-                  <select
-                    value={newColorMaterial}
-                    onChange={(e) => setNewColorMaterial(e.target.value as any)}
-                    className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
-                  >
-                    <option value="PLA">PLA</option>
-                    <option value="PETG">PETG</option>
-                    <option value="TPU">TPU</option>
-                  </select>
+                  <MaterialChecks value={newColorMaterials} onChange={setNewColorMaterials} />
                 </div>
               </div>
 
@@ -1597,23 +1611,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-primary-navy uppercase tracking-wider mb-1">
-                    Material
-                  </label>
-                  <select
-                    value={editingColor.materialType}
-                    onChange={(e) =>
-                      setEditingColor({
-                        ...editingColor,
-                        materialType: e.target.value as any,
-                      })
-                    }
-                    className="w-full h-10 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:bg-white focus:outline-none focus:border-slate-800 transition-all cursor-pointer"
-                  >
-                    <option value="PLA">PLA</option>
-                    <option value="PETG">PETG</option>
-                    <option value="TPU">TPU</option>
-                  </select>
+                  <MaterialChecks
+                    value={editingColor.materials}
+                    onChange={(materials) => setEditingColor({ ...editingColor, materials })}
+                  />
                 </div>
               </div>
 
@@ -1722,6 +1723,7 @@ export default function AdminDashboard({
                   <div className="flex items-center gap-4 text-[11px] text-secondary-slate">
                     <span>Top: <strong className="text-slate-900">{item.color.name}</strong></span>
                     <span>Base: <strong className="text-slate-900">{item.baseColor?.name || "Matte Black"}</strong></span>
+                    {item.material && <span>Material: <strong className="text-slate-900">{materialName(item.material)}</strong></span>}
                   </div>
                 </div>
               ))}

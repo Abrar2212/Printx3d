@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { MATERIAL_IDS } from "@/lib/materials";
 
 const UpdateColorSchema = z.object({
   name: z.string().min(2).max(50).optional(),
   hexCode: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
-  materialType: z.enum(["PLA", "PETG", "TPU"]).optional(),
+  materials: z.array(z.enum(MATERIAL_IDS)).min(1, "Choose at least one material").optional(),
   inStock: z.boolean().optional(),
 });
 
@@ -24,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       data: {
         ...(data.name && { name: data.name }),
         ...(data.hexCode && { hexCode: data.hexCode.toUpperCase() }),
-        ...(data.materialType && { materialType: data.materialType }),
+        ...(data.materials && { materials: data.materials }),
         ...(data.inStock !== undefined && { inStock: data.inStock }),
       },
     });

@@ -15,6 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { Style, FilamentColor } from "@/types";
 import { oneLine } from "@/lib/keychain-text";
+import { materialName } from "@/lib/materials";
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface OrderModalProps {
   selectedTextColor: FilamentColor | null;
   selectedBaseColor: FilamentColor | null;
   selectedFontStyle: string;
+  material: string;
 }
 
 const fieldClass =
@@ -37,6 +39,7 @@ export default function OrderModal({
   selectedTextColor,
   selectedBaseColor,
   selectedFontStyle,
+  material,
 }: OrderModalProps) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -86,6 +89,7 @@ export default function OrderModal({
         colorId: selectedTextColor?.id,
         baseColorId: selectedBaseColor?.id || null,
         fontStyle: selectedFontStyle,
+        material,
         quantity,
         customerName: name.trim() || "Customer",
         customerPhone: phone.trim(),
@@ -237,7 +241,7 @@ export default function OrderModal({
                 <div className="min-w-0">
                   <div className="font-semibold truncate">&ldquo;{oneLine(customText)}&rdquo;</div>
                   <div className="text-xs text-secondary-slate truncate">
-                    {selectedTextColor?.name} on {selectedBaseColor?.name}
+                    {selectedTextColor?.name} on {selectedBaseColor?.name} · {materialName(material)}
                   </div>
                 </div>
               </div>

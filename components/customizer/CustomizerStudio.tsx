@@ -10,11 +10,13 @@ import SiteFooter from "@/components/SiteFooter";
 import TextInput from "./TextInput";
 import StyleSelector from "./StyleSelector";
 import FontStyleSelector from "./FontStyleSelector";
+import MaterialSelector from "./MaterialSelector";
 import ColorPicker from "./ColorPicker";
 import ColorDuoPicker from "./ColorDuoPicker";
 import OrderModal from "./OrderModal";
 import type { Style, FilamentColor, StyleConfig } from "@/types";
 import { lineLimit } from "@/lib/keychain-text";
+import { MATERIALS, colorsFor } from "@/lib/materials";
 import { keychainSize } from "@/lib/keychain-geometry";
 
 // Load 3D canvas only on client (no SSR)
@@ -69,22 +71,19 @@ export default function CustomizerStudio({ styles, colors }: Props) {
   const [selectedStyleId, setSelectedStyleId] = useState<string>(styles[0]?.id ?? "");
 
   // Text Color (Foreground) & Base Color (Key Background Plate)
-  const defaultBaseColor = colors.find((c) => c.hexCode === "#111111") || colors[0];
-  const defaultTextColor =
-    colors.find((c) => c.hexCode === "#FF6600" || c.hexCode === "#FFD000") || colors[1] || colors[0];
-
-  const [selectedTextColorId, setSelectedTextColorId] = useState<string>(
-    defaultTextColor?.id ?? colors[0]?.id ?? ""
-  );
-  const [selectedBaseColorId, setSelectedBaseColorId] = useState<string>(
-    defaultBaseColor?.id ?? colors[0]?.id ?? ""
-  );
+  const materials = MATERIALS.filter((m) => colors.some((c) => c.materials.includes(m.id)));
+  const [material, setMaterial] = useState<string>(materials[0]?.id ?? "PLA");
+  const [pickedTextColorId, setSelectedTextColorId] = useState("");
+  const [pickedBaseColorId, setSelectedBaseColorId] = useState("");
   const [selectedFontStyle, setSelectedFontStyle] = useState<string>("helvetiker_bold");
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
   const selectedStyle = styles.find((s) => s.id === selectedStyleId) ?? null;
-  const selectedTextColor = colors.find((c) => c.id === selectedTextColorId) ?? null;
-  const selectedBaseColor = colors.find((c) => c.id === selectedBaseColorId) ?? null;
+  const { available, text: textColor, base: baseColor } = colorsFor(colors, material, pickedTextColorId, pickedBaseColorId);
+  const selectedTextColor = textColor ?? null;
+  const selectedBaseColor = baseColor ?? null;
+  const selectedTextColorId = selectedTextColor?.id ?? "";
+  const selectedBaseColorId = selectedBaseColor?.id ?? "";
   const price = selectedStyle?.basePrice ?? 5.99;
   const maxLines = lineLimit(selectedStyle?.config);
 
@@ -121,7 +120,6 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                   textColor={selectedTextColor?.hexCode ?? "#FF6600"}
                   baseColor={selectedBaseColor?.hexCode ?? "#111111"}
                   fontStyle={selectedFontStyle}
-                  materialType={selectedTextColor?.materialType ?? "PLA"}
                   size={keychainSize(selectedStyle?.config)}
                   hasKeychainLoop={selectedStyle?.config?.hasKeychainLoop ?? true}
                 />
@@ -131,8 +129,9 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                 <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
                   <TextInput value={text} onChange={setText} maxLines={maxLines} />
                   <FontStyleSelector selectedId={selectedFontStyle} onSelect={setSelectedFontStyle} />
+                  <MaterialSelector materials={materials} selectedId={material} onSelect={setMaterial} />
                   <ColorDuoPicker
-                    colors={colors}
+                    colors={available}
                     selectedBaseColorId={selectedBaseColorId}
                     selectedTextColorId={selectedTextColorId}
                     onApplyDuo={(baseId, textId) => {
@@ -142,13 +141,13 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                   />
                   <ColorPicker
                     label="Letter colour"
-                    colors={colors}
+                    colors={available}
                     selectedId={selectedTextColorId}
                     onSelect={setSelectedTextColorId}
                   />
                   <ColorPicker
                     label="Base colour"
-                    colors={colors}
+                    colors={available}
                     selectedId={selectedBaseColorId}
                     onSelect={setSelectedBaseColorId}
                   />
@@ -187,6 +186,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
         selectedTextColor={selectedTextColor}
         selectedBaseColor={selectedBaseColor}
         selectedFontStyle={selectedFontStyle}
+        material={material}
       />
     </div>
   );

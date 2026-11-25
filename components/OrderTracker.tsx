@@ -4,12 +4,14 @@ import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import { oneLine } from "@/lib/keychain-text";
+import { materialName } from "@/lib/materials";
 
 type OrderStatus = "PENDING" | "CONFIRMED" | "PRINTING" | "PRINTED" | "SHIPPED" | "DELIVERED";
 
 interface OrderItem {
   id: string;
   customText: string;
+  material: string | null;
   quantity: number;
   unitPrice: number;
   color: { name: string; hexCode: string };
@@ -104,7 +106,8 @@ export default function OrderTracker({ order, statusSteps }: Props) {
               <div className="min-w-0">
                 <p className="font-semibold truncate">&ldquo;{oneLine(item.customText)}&rdquo;</p>
                 <p className="text-sm text-secondary-slate">
-                  {item.color.name} on {item.baseColor?.name ?? "Black"} · × {item.quantity}
+                  {item.color.name} on {item.baseColor?.name ?? "Black"}
+                  {item.material && ` · ${materialName(item.material)}`} · × {item.quantity}
                 </p>
               </div>
               <span className="ml-auto font-semibold tabular-nums">৳{(item.unitPrice * item.quantity).toFixed(2)}</span>

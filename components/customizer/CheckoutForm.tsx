@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import MaterialSelector from "./MaterialSelector";
 import SiteHeader from "@/components/SiteHeader";
 import { FONT_STYLE_OPTIONS, type Style, type FilamentColor, type StyleConfig } from "@/types";
+import { MATERIALS, colorsFor } from "@/lib/materials";
 
 interface Props {
   styles: (Style & { config: StyleConfig })[];
@@ -29,22 +31,14 @@ export default function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const defaultBase =
-    colors.find((c) => c.id === defaultBaseColorId) ||
-    colors.find((c) => c.hexCode === "#111111") ||
-    colors[0];
-
-  const defaultTextCol =
-    colors.find((c) => c.id === defaultColorId) ||
-    colors.find((c) => c.hexCode === "#FF6600") ||
-    colors[1] ||
-    colors[0];
+  const materials = MATERIALS.filter((m) => colors.some((c) => c.materials.includes(m.id)));
 
   const [form, setForm] = useState({
     customText: defaultText || "Custom Key",
     styleId: defaultStyleId ?? styles[0]?.id ?? "",
-    colorId: defaultTextCol?.id ?? colors[0]?.id ?? "",
-    baseColorId: defaultBase?.id ?? colors[0]?.id ?? "",
+    material: (materials[0]?.id ?? "PLA") as string,
+    colorId: defaultColorId ?? "",
+    baseColorId: defaultBaseColorId ?? "",
     fontStyle: defaultFontStyle || "helvetiker_bold",
     quantity: 1,
     customerName: "",
@@ -54,8 +48,11 @@ export default function CheckoutForm({
   });
 
   const selectedStyle = styles.find((s) => s.id === form.styleId);
-  const selectedTextColor = colors.find((c) => c.id === form.colorId);
-  const selectedBaseColor = colors.find((c) => c.id === form.baseColorId);
+  const {
+    available,
+    text: selectedTextColor,
+    base: selectedBaseColor,
+  } = colorsFor(colors, form.material, form.colorId, form.baseColorId);
   const selectedFont = FONT_STYLE_OPTIONS.find((f) => f.id === form.fontStyle);
 
   const total = selectedStyle ? selectedStyle.basePrice * form.quantity : 0;
@@ -72,7 +69,7 @@ export default function CheckoutForm({
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, colorId: selectedTextColor?.id ?? "", baseColorId: selectedBaseColor?.id }),
       });
 
       const data = await res.json();
@@ -171,6 +168,8 @@ export default function CheckoutForm({
               </div>
             </div>
 
+            <MaterialSelector materials={materials} selectedId={form.material} onSelect={(id) => set("material", id)} />
+
             {/* Two-Tone Visual Preview Badge */}
             <div className="p-3 bg-bg border border-border rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -201,14 +200,14 @@ export default function CheckoutForm({
                 Embossed Text Color (Top) *
               </label>
               <div className="flex flex-wrap gap-2">
-                {colors.map((c) => (
+                {available.map((c) => (
                   <button
                     key={c.id}
                     type="button"
                     onClick={() => set("colorId", c.id)}
                     title={`${c.name}`}
                     className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all ${
-                      form.colorId === c.id
+                      selectedTextColor?.id === c.id
                         ? "border-primary-navy ring-2 ring-primary-navy/30 scale-105"
                         : "border-border-subtle hover:border-secondary-slate"
                     }`}
@@ -224,14 +223,14 @@ export default function CheckoutForm({
                 Key Background Plate Color (Base) *
               </label>
               <div className="flex flex-wrap gap-2">
-                {colors.map((c) => (
+                {available.map((c) => (
                   <button
                     key={c.id}
                     type="button"
                     onClick={() => set("baseColorId", c.id)}
                     title={`${c.name}`}
                     className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all ${
-                      form.baseColorId === c.id
+                      selectedBaseColor?.id === c.id
                         ? "border-primary-navy ring-2 ring-primary-navy/30 scale-105"
                         : "border-border-subtle hover:border-secondary-slate"
                     }`}

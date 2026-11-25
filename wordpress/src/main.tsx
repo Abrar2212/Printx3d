@@ -6,8 +6,11 @@ import StudioCanvas from "@/components/3d/StudioCanvas";
 import TextInput from "@/components/customizer/TextInput";
 import StyleSelector from "@/components/customizer/StyleSelector";
 import FontStyleSelector from "@/components/customizer/FontStyleSelector";
+import MaterialSelector from "@/components/customizer/MaterialSelector";
 import ColorPicker from "@/components/customizer/ColorPicker";
 import ColorDuoPicker from "@/components/customizer/ColorDuoPicker";
+import { keychainSize } from "@/lib/keychain-geometry";
+import { colorsFor } from "@/lib/materials";
 import { lineLimit } from "@/lib/keychain-text";
 import { FONT_STYLE_OPTIONS, type Style, type FilamentColor } from "@/types";
 
@@ -16,8 +19,8 @@ interface Cart {
   nonce: string;
 }
 
-const { styles = [], colors = [], currency = "$", defaultText = "Your Name", cart = null } = (window as unknown as {
-  PRINTX3D: { styles: Style[]; colors: FilamentColor[]; currency?: string; defaultText?: string; cart?: Cart | null };
+const { styles = [], colors = [], materials = [], currency = "$", defaultText = "Your Name", cart = null } = (window as unknown as {
+  PRINTX3D: { styles: Style[]; colors: FilamentColor[]; materials: { id: string; name: string }[]; currency?: string; defaultText?: string; cart?: Cart | null };
 }).PRINTX3D;
 // Personal-use fonts are not shipped with the plugin (see copy-fonts.mjs)
 const fonts = FONT_STYLE_OPTIONS.filter((f) => !f.personalUseOnly);
@@ -25,17 +28,15 @@ const fonts = FONT_STYLE_OPTIONS.filter((f) => !f.personalUseOnly);
 function Studio() {
   const [text, setText] = useState(defaultText);
   const [styleId, setStyleId] = useState(styles[0]?.id ?? "");
-  const [baseId, setBaseId] = useState((colors.find((c) => c.hexCode === "#111111") ?? colors[0])?.id ?? "");
-  const [textId, setTextId] = useState(
-    (colors.find((c) => c.hexCode === "#FF6600" || c.hexCode === "#FFD000") ?? colors[1] ?? colors[0])?.id ?? ""
-  );
+  const [material, setMaterial] = useState(materials[0]?.id ?? "");
+  const [baseId, setBaseId] = useState("");
+  const [textId, setTextId] = useState("");
   const [font, setFont] = useState(fonts[0].id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const style = styles.find((s) => s.id === styleId);
-  const textColor = colors.find((c) => c.id === textId);
-  const baseColor = colors.find((c) => c.id === baseId);
+  const { available, text: textColor, base: baseColor } = colorsFor(colors, material, textId, baseId);
 
   const selectStyle = (id: string) => {
     setStyleId(id);
@@ -55,8 +56,9 @@ function Studio() {
       body.append("text", text);
       body.append("font", font);
       body.append("style", styleId);
-      body.append("textColor", textId);
-      body.append("baseColor", baseId);
+      body.append("material", material);
+      body.append("textColor", textColor?.id ?? "");
+      body.append("baseColor", baseColor?.id ?? "");
       const res = await fetch(cart.ajaxUrl, { method: "POST", body, credentials: "same-origin" });
       const json = (await res.json().catch(() => null)) as { success: boolean; data?: { cartUrl?: string; message?: string } } | null;
       if (json?.success && json.data?.cartUrl) window.location.href = json.data.cartUrl;
@@ -75,25 +77,26 @@ function Studio() {
           textColor={textColor?.hexCode ?? "#FF6600"}
           baseColor={baseColor?.hexCode ?? "#111111"}
           fontStyle={font}
-          materialType={textColor?.materialType ?? "PLA"}
           hasKeychainLoop={style?.config?.hasKeychainLoop ?? true}
+          size={keychainSize(style?.config)}
         />
       </div>
       <aside className="w-full @3xl:w-[420px] flex flex-col">
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
         <TextInput value={text} onChange={setText} maxLines={lineLimit(style?.config)} />
         <FontStyleSelector selectedId={font} onSelect={setFont} options={fonts} />
+        <MaterialSelector materials={materials} selectedId={material} onSelect={setMaterial} />
         <ColorDuoPicker
-          colors={colors}
-          selectedBaseColorId={baseId}
-          selectedTextColorId={textId}
+          colors={available}
+          selectedBaseColorId={baseColor?.id ?? null}
+          selectedTextColorId={textColor?.id ?? null}
           onApplyDuo={(b, t) => {
             setBaseId(b);
             setTextId(t);
           }}
         />
-        <ColorPicker label="Letter colour" colors={colors} selectedId={textId} onSelect={setTextId} />
-        <ColorPicker label="Base colour" colors={colors} selectedId={baseId} onSelect={setBaseId} />
+        <ColorPicker label="Letter colour" colors={available} selectedId={textColor?.id ?? null} onSelect={setTextId} />
+        <ColorPicker label="Base colour" colors={available} selectedId={baseColor?.id ?? null} onSelect={setBaseId} />
         <StyleSelector styles={styles} selectedId={styleId} onSelect={selectStyle} currency={currency} />
         </div>
         {cart && (

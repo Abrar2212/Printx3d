@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { MATERIAL_IDS } from "@/lib/materials";
 
 const CreateColorSchema = z.object({
   name: z.string().min(2, "Color name must be at least 2 characters").max(50),
   hexCode: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Invalid Hex color"),
-  materialType: z.enum(["PLA", "PETG", "TPU"]).default("PLA"),
+  materials: z.array(z.enum(MATERIAL_IDS)).min(1, "Choose at least one material"),
   inStock: z.boolean().default(true),
 });
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
         id,
         name: data.name,
         hexCode: data.hexCode.toUpperCase(),
-        materialType: data.materialType,
+        materials: data.materials,
         inStock: data.inStock,
       },
     });
