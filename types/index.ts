@@ -159,6 +159,7 @@ export interface StyleConfig {
   bevel: number;
   hasBasePlate: boolean;
   hasKeychainLoop?: boolean;
+  tpuPrice?: number | null; // price in TPU; basePrice (PLA+) if not set
   maxLines?: number; // 1–3 lines of customer text (admin "Lines" setting); default 3
 }
 

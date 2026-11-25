@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { MATERIAL_IDS, materialName } from "@/lib/materials";
+import { MATERIAL_IDS, materialName, priceFor } from "@/lib/materials";
 import { FONT_STYLE_OPTIONS } from "@/types";
 import { keychainText, lineLimit, MAX_LINE_CHARS, MAX_LINES } from "@/lib/keychain-text";
 
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const unitPrice = Number(style.basePrice);
+    const unitPrice = priceFor(style, data.material);
     const totalPrice = unitPrice * data.quantity;
 
     const sanitizedPhone = data.customerPhone.trim();

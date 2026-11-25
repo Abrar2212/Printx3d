@@ -2,7 +2,7 @@
 Tags: 3d, keychain, customizer, preview, 3d printing
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,7 +19,8 @@ Each order line keeps the design, and shop staff get a "Download STL" button on 
 Administrators and Shop Managers can edit colours and products.
 
 Customers choose Plastic (PLA+) or Flexible (TPU). Tick which of the two each colour is stocked in;
-only those colours are offered for that material.
+only those colours are offered for that material. Each product has a PLA+ price and a TPU price;
+leave the TPU price empty to charge the same.
 
 == Installation ==
 

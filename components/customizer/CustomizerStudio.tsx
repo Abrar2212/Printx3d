@@ -16,7 +16,7 @@ import ColorDuoPicker from "./ColorDuoPicker";
 import OrderModal from "./OrderModal";
 import type { Style, FilamentColor, StyleConfig } from "@/types";
 import { lineLimit } from "@/lib/keychain-text";
-import { MATERIALS, colorsFor } from "@/lib/materials";
+import { MATERIALS, colorsFor, priceFor } from "@/lib/materials";
 import { keychainSize } from "@/lib/keychain-geometry";
 
 // Load 3D canvas only on client (no SSR)
@@ -78,7 +78,8 @@ export default function CustomizerStudio({ styles, colors }: Props) {
   const [selectedFontStyle, setSelectedFontStyle] = useState<string>("helvetiker_bold");
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
-  const selectedStyle = styles.find((s) => s.id === selectedStyleId) ?? null;
+  const pricedStyles = styles.map((s) => ({ ...s, basePrice: priceFor(s, material) })); // in the chosen material
+  const selectedStyle = pricedStyles.find((s) => s.id === selectedStyleId) ?? null;
   const { available, text: textColor, base: baseColor } = colorsFor(colors, material, pickedTextColorId, pickedBaseColorId);
   const selectedTextColor = textColor ?? null;
   const selectedBaseColor = baseColor ?? null;
@@ -151,7 +152,7 @@ export default function CustomizerStudio({ styles, colors }: Props) {
                     selectedId={selectedBaseColorId}
                     onSelect={setSelectedBaseColorId}
                   />
-                  <StyleSelector styles={styles} selectedId={selectedStyleId} onSelect={selectStyle} />
+                  <StyleSelector styles={pricedStyles} selectedId={selectedStyleId} onSelect={selectStyle} />
                 </div>
 
                 <div className="p-5 sm:px-6 border-t border-border bg-surface flex items-center justify-between gap-4 sticky bottom-0 lg:static z-20 rounded-b-3xl lg:rounded-none">

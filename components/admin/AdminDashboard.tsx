@@ -270,7 +270,7 @@ export default function AdminDashboard({
   const [sizes, setSizes] = useState<KeychainSize>(() => keychainSize(initialConfig));
   const printSizes = keychainSize(sizeConfig(sizes)); // what the sliders will print (ear/hole kept printable)
   const [maxLines, setMaxLines] = useState<number>(lineLimit(initialConfig));
-  const [priceDrafts, setPriceDrafts] = useState<Record<string, number>>({}); // product id → edited price
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, { pla: string; tpu: string }>>({}); // product id → edited prices
   const [priceSaving, setPriceSaving] = useState<string | null>(null);
   const [defaultFont, setDefaultFont] = useState<string>(keychainStyle?.fontFamily || "helvetiker_bold");
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -493,20 +493,22 @@ export default function AdminDashboard({
 
   // ─── Product prices: one row per active product (Keychain, Desk Plaque Stand, …) ──
   const handleSavePrice = async (style: StyleItem) => {
-    const price = priceDrafts[style.id];
-    if (price === undefined || !(price >= 0)) return;
+    const draft = priceDrafts[style.id];
+    if (!draft) return;
+    const basePrice = parseFloat(draft.pla);
+    const tpuPrice = draft.tpu.trim() === "" ? null : parseFloat(draft.tpu); // empty: same as PLA+
     setPriceSaving(style.id);
     try {
       const res = await fetch(`/api/admin/styles/${style.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ basePrice: price }),
+        body: JSON.stringify({ basePrice, config: { tpuPrice } }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const updated = await res.json();
-      setStyles((prev) => prev.map((s) => (s.id === updated.id ? { ...s, basePrice: Number(updated.basePrice) } : s)));
+      setStyles((prev) => prev.map((s) => (s.id === updated.id ? { ...s, basePrice: Number(updated.basePrice), config: updated.config } : s)));
       setPriceDrafts(({ [style.id]: _saved, ...rest }) => rest);
-      setSettingsToast(`${style.name} price updated to ৳${price.toFixed(2)}.`);
+      setSettingsToast(`${style.name} prices updated.`);
       setTimeout(() => setSettingsToast(""), 4000);
     } catch (err) {
       console.error("Failed to save price:", err);
@@ -1102,36 +1104,38 @@ export default function AdminDashboard({
             <div className="bg-white border border-border rounded-xl p-6 shadow-xs space-y-4">
               <div>
                 <h2 className="text-sm font-bold text-primary-navy">Product Prices</h2>
-                <p className="text-xs text-secondary-slate">What customers pay for each product, in ৳.</p>
+                <p className="text-xs text-secondary-slate">What customers pay for each product, in ৳. Leave TPU empty to charge the PLA+ price.</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {styles
                   .filter((s) => s.isActive)
                   .map((style) => {
-                    const draft = priceDrafts[style.id];
-                    const value = draft ?? style.basePrice;
-                    const changed = draft !== undefined && draft !== style.basePrice;
+                    const saved = { pla: String(style.basePrice), tpu: String(style.config.tpuPrice ?? "") };
+                    const draft = priceDrafts[style.id] ?? saved;
+                    const changed = draft.pla !== saved.pla || draft.tpu !== saved.tpu;
+                    const valid = parseFloat(draft.pla) > 0 && (draft.tpu.trim() === "" || parseFloat(draft.tpu) > 0);
                     return (
                       <div key={style.id} className="flex flex-wrap items-center gap-3 py-3">
-                        <label htmlFor={`price-${style.id}`} className="flex-1 min-w-40 text-sm font-semibold text-primary-navy">
-                          {style.name}
-                        </label>
-                        <div className="relative w-36">
-                          <span className="absolute left-3 top-2.5 text-sm font-bold text-slate-500 font-mono">৳</span>
-                          <input
-                            id={`price-${style.id}`}
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            value={value}
-                            onChange={(e) => setPriceDrafts((d) => ({ ...d, [style.id]: parseFloat(e.target.value) || 0 }))}
-                            className="w-full h-10 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
-                          />
-                        </div>
+                        <span className="flex-1 min-w-40 text-sm font-semibold text-primary-navy">{style.name}</span>
+                        {(["pla", "tpu"] as const).map((k) => (
+                          <label key={k} className="w-36 text-[11px] font-bold text-secondary-slate">
+                            {k === "pla" ? "PLA+ (৳)" : "TPU (৳)"}
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={draft[k]}
+                              placeholder={k === "tpu" ? "Same as PLA+" : undefined}
+                              aria-label={`${style.name} ${k === "pla" ? "PLA+" : "TPU"} price`}
+                              onChange={(e) => setPriceDrafts((d) => ({ ...d, [style.id]: { ...draft, [k]: e.target.value } }))}
+                              className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono text-primary-navy focus:bg-white focus:outline-none focus:border-slate-800 transition-all"
+                            />
+                          </label>
+                        ))}
                         <button
                           type="button"
                           onClick={() => handleSavePrice(style)}
-                          disabled={!changed || priceSaving === style.id}
+                          disabled={!changed || !valid || priceSaving === style.id}
                           className="h-10 px-4 bg-primary-navy hover:bg-primary-navy-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
                         >
                           {priceSaving === style.id ? "Saving…" : "Save"}

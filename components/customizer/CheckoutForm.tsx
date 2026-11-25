@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import MaterialSelector from "./MaterialSelector";
 import SiteHeader from "@/components/SiteHeader";
 import { FONT_STYLE_OPTIONS, type Style, type FilamentColor, type StyleConfig } from "@/types";
-import { MATERIALS, colorsFor } from "@/lib/materials";
+import { MATERIALS, colorsFor, priceFor } from "@/lib/materials";
 
 interface Props {
   styles: (Style & { config: StyleConfig })[];
@@ -55,7 +55,7 @@ export default function CheckoutForm({
   } = colorsFor(colors, form.material, form.colorId, form.baseColorId);
   const selectedFont = FONT_STYLE_OPTIONS.find((f) => f.id === form.fontStyle);
 
-  const total = selectedStyle ? selectedStyle.basePrice * form.quantity : 0;
+  const total = selectedStyle ? priceFor(selectedStyle, form.material) * form.quantity : 0;
 
   const set = (k: keyof typeof form, v: string | number) =>
     setForm((prev) => ({ ...prev, [k]: v }));
@@ -261,7 +261,7 @@ export default function CheckoutForm({
                       {s.name}
                     </div>
                     <div className="text-xs font-mono text-tertiary-sage mt-0.5">
-                      ৳{s.basePrice.toFixed(2)}
+                      ৳{priceFor(s, form.material).toFixed(2)}
                     </div>
                   </button>
                 ))}

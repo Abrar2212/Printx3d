@@ -8,6 +8,12 @@ export const MATERIAL_IDS = ["PLA", "TPU"] as const;
 /** Display name; empty for orders placed before materials could be chosen. */
 export const materialName = (id?: string | null) => MATERIALS.find((m) => m.id === id)?.name ?? "";
 
+/** A product's price in a material: basePrice is the PLA+ price; TPU has its own (config.tpuPrice) or costs the same. */
+export function priceFor(style: { basePrice: unknown; config?: unknown }, material: string): number {
+  const tpu = (style.config as { tpuPrice?: unknown } | null | undefined)?.tpuPrice;
+  return material === "TPU" && typeof tpu === "number" && tpu >= 0 ? tpu : Number(style.basePrice);
+}
+
 interface StockColor {
   id: string;
   hexCode: string;

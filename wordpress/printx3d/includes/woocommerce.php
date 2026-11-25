@@ -61,7 +61,7 @@ function printx3d_validate_design(array $in) {
         'fontName' => $fonts[$font],
         'styleId' => $style['id'],
         'styleName' => $style['name'],
-        'price' => (float) $style['basePrice'],
+        'price' => printx3d_price($style, $material),
         'material' => $material,
         'hasKeychainLoop' => !empty($style['config']['hasKeychainLoop']),
         'size' => printx3d_sizes($style['config']),
@@ -132,7 +132,7 @@ add_action('woocommerce_before_calculate_totals', function ($cart) {
             continue;
         }
         $style = printx3d_find(printx3d_settings()['styles'], $item['printx3d']['styleId']);
-        $item['data']->set_price($style ? (float) $style['basePrice'] : (float) $item['printx3d']['price']);
+        $item['data']->set_price($style ? printx3d_price($style, $item['printx3d']['material'] ?? 'PLA') : (float) $item['printx3d']['price']);
     }
 });
 

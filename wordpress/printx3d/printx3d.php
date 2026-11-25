@@ -2,7 +2,7 @@
 /**
  * Plugin Name: PrintX3D Customizer
  * Description: 3D keychain designer with WooCommerce cart and STL download. Shortcode: [printx3d]. Settings: PrintX3D in the left menu.
- * Version: 1.1.0
+ * Version: 1.2.0
  * License: GPLv2 or later
  */
 
@@ -35,6 +35,11 @@ function printx3d_sizes(array $saved, array $posted = []) {
     $out['earRadius'] = max($out['earRadius'], $out['offsetRadius'] + 0.05);
     $out['holeRadius'] = min($out['holeRadius'], $out['earRadius'] - 0.06);
     return $out;
+}
+
+/** A product's price in a material: basePrice is the PLA+ price; TPU has its own (config tpuPrice) or costs the same. */
+function printx3d_price(array $style, string $material): float {
+    return (float) ($material === 'TPU' ? $style['config']['tpuPrice'] ?? $style['basePrice'] : $style['basePrice']);
 }
 
 /** Materials a colour is stocked in; colours saved before 1.1 had no such list and count as both. */
@@ -178,6 +183,7 @@ function printx3d_sanitize($in) {
             'basePrice' => max(0, (float) ($r['basePrice'] ?? 0)),
             'isActive' => !empty($r['isActive']),
             'config' => printx3d_sizes($r, (array) ($r['size'] ?? [])) + [
+                'tpuPrice' => is_numeric($r['tpuPrice'] ?? null) ? max(0, (float) $r['tpuPrice']) : null, // empty: same as PLA+
                 'hasKeychainLoop' => !empty($r['hasKeychainLoop']),
                 'maxLines' => min(3, max(1, (int) ($r['maxLines'] ?? 3))),
             ],
@@ -251,13 +257,14 @@ function printx3d_admin_page() {
             <h2>Products</h2>
             <div style="overflow-x:auto">
             <table class="widefat striped">
-                <thead><tr><th>Name</th><th>Price (<?= esc_html(printx3d_currency()) ?>)</th><?php foreach (PRINTX3D_SIZES as [$label]): ?><th><?= esc_html($label) ?></th><?php endforeach; ?><th>Lines</th><th>Key loop</th><th>Active</th><th>Delete</th></tr></thead>
+                <thead><tr><th>Name</th><th>PLA+ price (<?= esc_html(printx3d_currency()) ?>)</th><th>TPU price (<?= esc_html(printx3d_currency()) ?>)</th><?php foreach (PRINTX3D_SIZES as [$label]): ?><th><?= esc_html($label) ?></th><?php endforeach; ?><th>Lines</th><th>Key loop</th><th>Active</th><th>Delete</th></tr></thead>
                 <tbody>
                 <?php foreach (array_merge($s['styles'], [$blankStyle]) as $i => $st): $n = "{$o}[styles][$i]"; $cf = $st['config']; $sizes = printx3d_sizes($cf); ?>
                     <tr>
                         <td><input type="hidden" name="<?= $n ?>[id]" value="<?= esc_attr($st['id']) ?>">
                             <input type="text" name="<?= $n ?>[name]" value="<?= esc_attr($st['name']) ?>" placeholder="New product"></td>
-                        <td><input type="number" step="0.01" min="0" name="<?= $n ?>[basePrice]" value="<?= esc_attr($st['basePrice']) ?>" style="width:90px"></td>
+                        <td><input type="number" step="0.01" min="0" name="<?= $n ?>[basePrice]" value="<?= esc_attr($st['basePrice']) ?>" aria-label="PLA+ price" style="width:90px"></td>
+                        <td><input type="number" step="0.01" min="0" name="<?= $n ?>[tpuPrice]" value="<?= esc_attr($cf['tpuPrice'] ?? '') ?>" placeholder="Same" aria-label="TPU price, empty for the PLA+ price" style="width:90px"></td>
                         <?php foreach (PRINTX3D_SIZES as $k => [$label, , $min, $max, $per]): ?>
                             <td><input type="number" step="any" min="<?= round($min * $per, 2) ?>" max="<?= round($max * $per, 2) ?>" aria-label="<?= esc_attr($label) ?>" name="<?= $n ?>[size][<?= $k ?>]" value="<?= round($sizes[$k] * $per, 2) ?>" style="width:75px"></td>
                         <?php endforeach; ?>

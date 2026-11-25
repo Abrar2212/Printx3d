@@ -10,7 +10,7 @@ import MaterialSelector from "@/components/customizer/MaterialSelector";
 import ColorPicker from "@/components/customizer/ColorPicker";
 import ColorDuoPicker from "@/components/customizer/ColorDuoPicker";
 import { keychainSize } from "@/lib/keychain-geometry";
-import { colorsFor } from "@/lib/materials";
+import { colorsFor, priceFor } from "@/lib/materials";
 import { lineLimit } from "@/lib/keychain-text";
 import { FONT_STYLE_OPTIONS, type Style, type FilamentColor } from "@/types";
 
@@ -35,7 +35,8 @@ function Studio() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const style = styles.find((s) => s.id === styleId);
+  const pricedStyles = styles.map((s) => ({ ...s, basePrice: priceFor(s, material) })); // in the chosen material
+  const style = pricedStyles.find((s) => s.id === styleId);
   const { available, text: textColor, base: baseColor } = colorsFor(colors, material, textId, baseId);
 
   const selectStyle = (id: string) => {
@@ -97,7 +98,7 @@ function Studio() {
         />
         <ColorPicker label="Letter colour" colors={available} selectedId={textColor?.id ?? null} onSelect={setTextId} />
         <ColorPicker label="Base colour" colors={available} selectedId={baseColor?.id ?? null} onSelect={setBaseId} />
-        <StyleSelector styles={styles} selectedId={styleId} onSelect={selectStyle} currency={currency} />
+        <StyleSelector styles={pricedStyles} selectedId={styleId} onSelect={selectStyle} currency={currency} />
         </div>
         {cart && (
           <div className="p-5 sm:px-6 border-t border-border">
